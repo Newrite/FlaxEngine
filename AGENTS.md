@@ -13,6 +13,7 @@ This repository contains the engine, editor, tooling, shaders, tests, assets, an
 - `Source/Platforms/`: platform-specific code, dependencies, and binaries.
 - `Source/ThirdParty/`: vendored third-party code. Avoid changes here unless the task explicitly requires it.
 - `Source/Engine/Tests/`: native and managed engine tests.
+- `Source/Engine/Tests.FSharp/`: managed engine tests written in F# (how the engine handles F# code).
 - `Source/Tools/Flax.Build.Tests/`: .NET tests for the build tool.
 - `Content/`: engine/editor assets.
 - `Development/Scripts/`: helper scripts for project generation and builds.
@@ -93,6 +94,13 @@ xcopy /y Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll Binaries\Tests
 xcopy /y Binaries\Editor\Win64\Development\FlaxEngine.CSharp.runtimeconfig.json Binaries\Tests
 xcopy /y Binaries\Editor\Win64\Development\Newtonsoft.Json.dll Binaries\Tests
 dotnet test -f net8.0 Binaries\Tests\FlaxEngine.CSharp.dll
+```
+
+Build and run the F# engine tests (they reference `Binaries\Editor\Win64\Development\FlaxEngine.CSharp.dll`, so build `FlaxEditor` or `FlaxTestsTarget` first; Flax.Build does not compile F#, so this is a standalone SDK project like Flax.Build.Tests):
+
+```powershell
+dotnet build Source\Engine\Tests.FSharp\FlaxEngine.FSharp.Tests.fsproj
+dotnet test Binaries\Tests\FlaxEngine.FSharp.Tests.dll
 ```
 
 If a change is localized, prefer the narrowest possible target build and only run the relevant tests for that area.

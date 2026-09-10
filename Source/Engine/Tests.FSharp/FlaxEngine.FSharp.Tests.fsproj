@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Managed engine tests written in F#, testing how the engine handles F# code (real F# records, unions,
+    options, collections and field styles). The C# engine tests in Source/Engine/Tests are compiled into
+    FlaxEngine.CSharp.dll by FlaxTestsTarget, but Flax.Build does not compile F#, so - like Flax.Build.Tests -
+    this is a standalone SDK project that outputs to Binaries/Tests. It references the editor build of
+    FlaxEngine.CSharp.dll, so build FlaxEditor (or FlaxTestsTarget) first.
+  -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Library</OutputType>
+    <OutputPath>..\..\..\Binaries\Tests\</OutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Test against the FSharp.Core the engine ships, not the one bundled with the SDK -->
+    <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
+    <FlaxEditorBinaries Condition="'$(FlaxEditorBinaries)' == ''">..\..\..\Binaries\Editor\Win64\Development\</FlaxEditorBinaries>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Fixtures.fs" />
+    <Compile Include="TestSerialization.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.4.0" />
+    <PackageReference Include="NUnit" Version="3.13.3" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="FSharp.Core">
+      <HintPath>..\..\Platforms\DotNet\FSharp.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="FlaxEngine.CSharp">
+      <HintPath>$(FlaxEditorBinaries)FlaxEngine.CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(FlaxEditorBinaries)Newtonsoft.Json.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    The engine uses its own Newtonsoft.Json fork (JsonSerializer binds to types only the fork has). The test
+    SDK brings the stock package transitively and it wins the copy, so put the fork back last.
+  -->
+  <Target Name="CopyFlaxNewtonsoftJson" AfterTargets="Build">
+    <Copy SourceFiles="$(FlaxEditorBinaries)Newtonsoft.Json.dll" DestinationFolder="$(OutputPath)" />
+  </Target>
+
+</Project>
