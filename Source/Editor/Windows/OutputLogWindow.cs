@@ -501,7 +501,10 @@ namespace FlaxEditor.Windows
         private StringBuilder _textBuffer = new StringBuilder();
         private List<TextBlock> _textBlocks = new List<TextBlock>();
         private DateTime _startupTime;
-        private Regex _compileRegex = new Regex("(?<path>^(?:[a-zA-Z]\\:|\\\\\\\\[ \\-\\.\\w\\.]+\\\\[ \\-\\.\\w.$]+)\\\\(?:[ \\-\\.\\w]+\\\\)*\\w([ \\w.])+)\\((?<line>\\d{1,}),\\d{1,},\\d{1,},\\d{1,}\\): (?<level>error|warning) (?<message>.*)", RegexOptions.Compiled);
+        // The optional (?:\w+ ) before the level accepts compilers that emit a diagnostic
+        // subcategory there. Roslyn never does, but fsc always does ("typecheck error FS0001",
+        // "parse error FS0010"), so without it no F# diagnostic is ever clickable.
+        private Regex _compileRegex = new Regex("(?<path>^(?:[a-zA-Z]\\:|\\\\\\\\[ \\-\\.\\w\\.]+\\\\[ \\-\\.\\w.$]+)\\\\(?:[ \\-\\.\\w]+\\\\)*\\w([ \\w.])+)\\((?<line>\\d{1,}),\\d{1,},\\d{1,},\\d{1,}\\): (?:\\w+ )?(?<level>error|warning) (?<message>.*)", RegexOptions.Compiled);
         private List<string> _commandHistory;
         private const string CommandHistoryKey = "CommandHistory";
         private const int CommandHistoryLimit = 30;
