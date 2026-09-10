@@ -1227,7 +1227,7 @@ namespace Flax.Build
                 int i;
 
                 // Binary modules
-                for (i = 0; i < buildData.BuildInfo.BinaryModules.Length; i++)
+                for (i = 0; i < buildData.BinaryModules.Length; i++)
                 {
                     var binaryModule = buildData.BinaryModules[i];
                     var binaryModuleInfo = new BuildTargetBinaryModuleInfo
