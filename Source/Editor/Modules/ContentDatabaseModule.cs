@@ -761,6 +761,19 @@ namespace FlaxEditor.Modules
                     }
                     else if (item is ScriptItem)
                     {
+                        // Only on an explicit user delete: editors that save by delete + recreate
+                        // also reach this method, and must not drop the file from the project.
+                        if (item is FSharpScriptItem)
+                        {
+                            try
+                            {
+                                FSharpProjectFile.RemoveFromProject(path);
+                            }
+                            catch (Exception ex)
+                            {
+                                Editor.LogWarning(ex);
+                            }
+                        }
                         FlaxEngine.Content.DeleteScript(path);
                     }
                     else
@@ -1029,6 +1042,8 @@ namespace FlaxEditor.Modules
                     ContentItem item;
                     if (path.EndsWith(".cs"))
                         item = new CSharpScriptItem(path);
+                    else if (path.EndsWith(".fs") || path.EndsWith(".fsi"))
+                        item = new FSharpScriptItem(path);
                     else if (path.EndsWith(".cpp") || path.EndsWith(".h") || path.EndsWith(".c") || path.EndsWith(".hpp"))
                         item = new CppScriptItem(path);
                     else if (path.EndsWith(".shader") || path.EndsWith(".hlsl"))
@@ -1163,6 +1178,8 @@ namespace FlaxEditor.Modules
             Proxy.Add(new CSharpEmptyInterfaceProxy());
             Proxy.Add(new CSharpActorProxy());
             Proxy.Add(new CSharpGamePluginProxy());
+            Proxy.Add(new FSharpScriptProxy());
+            Proxy.Add(new FSharpModuleProxy());
             Proxy.Add(new CppAssetProxy());
             Proxy.Add(new CppStaticClassProxy());
             Proxy.Add(new CppScriptProxy());
