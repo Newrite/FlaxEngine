@@ -16,6 +16,7 @@
 #include "Engine/Engine/Globals.h"
 #include "Engine/Threading/ThreadSpawner.h"
 #include "Engine/Platform/FileSystem.h"
+#include "Engine/Platform/File.h"
 #include "Steps/ValidateStep.h"
 #include "Steps/CompileScriptsStep.h"
 #include "Steps/PrecompileAssembliesStep.h"
@@ -196,14 +197,78 @@ const Char* ToString(const DotNetAOTModes mode)
     }
 }
 
-bool PlatformTools::IsNativeCodeFile(CookingData& data, const String& file)
+namespace
 {
+    // Recognizes a .NET assembly by the CLR runtime header entry of its PE image (data directory 14),
+    // which every managed assembly has and no native image does, regardless of the file name.
+    bool HasClrHeader(const StringView& path)
+    {
+        if (!FileSystem::FileExists(path))
+            return false;
+        auto file = File::Open(path, FileMode::OpenExisting, FileAccess::Read, FileShare::Read);
+        if (!file)
+            return false;
+        byte header[4096];
+        uint32 size = 0;
+        const bool failed = file->Read(header, sizeof(header), &size);
+        Delete(file);
+        if (failed || size < 0x40 || header[0] != 'M' || header[1] != 'Z')
+            return false;
+
+        auto readU16 = [&](uint64 offset, uint16& value) { if (offset + 2 > size) return false; Platform::MemoryCopy(&value, header + offset, 2); return true; };
+        auto readU32 = [&](uint64 offset, uint32& value) { if (offset + 4 > size) return false; Platform::MemoryCopy(&value, header + offset, 4); return true; };
+
+        uint32 peOffset, signature, directoriesCount, clrRva;
+        uint16 magic;
+        if (!readU32(0x3C, peOffset) || !readU32(peOffset, signature) || signature != 0x00004550) // "PE\0\0"
+            return false;
+        const uint64 optionalHeader = (uint64)peOffset + 4 + 20; // signature + COFF file header
+        if (!readU16(optionalHeader, magic))
+            return false;
+        uint64 directories;
+        if (magic == 0x10b) // PE32
+        {
+            if (!readU32(optionalHeader + 92, directoriesCount))
+                return false;
+            directories = optionalHeader + 96;
+        }
+        else if (magic == 0x20b) // PE32+
+        {
+            if (!readU32(optionalHeader + 108, directoriesCount))
+                return false;
+            directories = optionalHeader + 112;
+        }
+        else
+            return false;
+        const uint32 clrDirectory = 14; // IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR
+        return directoriesCount > clrDirectory && readU32(directories + clrDirectory * 8, clrRva) && clrRva != 0;
+    }
+}
+
+bool GameCooker::IsManagedCodeFile(const StringView& path)
+{
+    const String file(path);
+
+    // Engine and C# game assemblies are recognized by name, as always
     const String filename = StringUtils::GetFileName(file);
     if (filename.Contains(TEXT(".CSharp")) ||
         filename.Contains(TEXT("Newtonsoft.Json")))
-        return false;
-    // TODO: maybe use Mono.Cecil via Flax.Build to read assembly image metadata and check if it contains C#?
-    return true;
+        return true;
+
+    // Any other .NET assembly (eg. an F# game assembly, FSharp.Core, a NuGet library) by its image.
+    // Its symbols and docs follow it, the way Game.CSharp.pdb/.xml do through the name rule above.
+    const String extension = FileSystem::GetExtension(file);
+    if (extension == TEXT("pdb") || extension == TEXT("xml"))
+    {
+        const int32 dot = file.FindLast('.');
+        return dot != -1 && HasClrHeader(file.Left(dot) + TEXT(".dll"));
+    }
+    return HasClrHeader(file);
+}
+
+bool PlatformTools::IsNativeCodeFile(CookingData& data, const String& file)
+{
+    return !GameCooker::IsManagedCodeFile(file);
 }
 
 bool CookingData::AssetTypeStatistics::operator<(const AssetTypeStatistics& other) const
