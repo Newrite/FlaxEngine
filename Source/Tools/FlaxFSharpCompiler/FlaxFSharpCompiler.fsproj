@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A warm F# compiler host for the engine's build.
+
+    fsc has no server mode - it was prototyped inside Microsoft in 2019 and endorsed by both the
+    F# PM and the Roslyn compiler lead in 2021, but never resourced, and seven years on there is
+    still no /shared equivalent. Every invocation therefore re-reads the ~169 reference assemblies
+    and re-JITs the compiler.
+
+    Measured on this machine with a real project: raw fsc 1248 ms, dotnet build 2141 ms, this host
+    once warm 148-301 ms. The win comes from process-global ILModuleReader caches in FCS plus JIT
+    warmup - NOT from FSharpChecker's own caches, which FSharpChecker.Compile bypasses entirely.
+    That is why no checker lifetime or invalidation logic exists below: a warm process is the
+    whole mechanism.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>FlaxFSharpCompiler</AssemblyName>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Without this the host's first compile is ~2.3 s, worse than plain fsc. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 43.x tracks the SDK band and pins FSharp.Core exactly; bump both together. -->
+    <PackageReference Include="FSharp.Compiler.Service" Version="43.12.400" />
+  </ItemGroup>
+
+</Project>
