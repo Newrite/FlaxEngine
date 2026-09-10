@@ -45,6 +45,25 @@ namespace Flax.Build
             var newtonsoftJsonPath = options.Platform?.HasDynamicCodeExecutionSupport ?? true ? "Newtonsoft.Json.dll" : "AOT/Newtonsoft.Json.dll";
             options.ScriptingAPI.FileReferences.Add(Utilities.RemovePathRelativeParts(Path.Combine(Globals.EngineRoot, "Source", "Platforms", "DotNet", newtonsoftJsonPath)));
             options.ScriptingAPI.SystemReferences.Add("System.ComponentModel.TypeConverter");
+
+            // FSharp.Core is deployed exactly like Newtonsoft.Json: as an engine-level managed
+            // dependency, so it lands in the binaries folder and is therefore on the host's TPA
+            // list. That placement is load-bearing, not cosmetic.
+            //
+            // Resolved any other way, FSharp.Core is pulled in through the scripting ALC's
+            // Resolving handler and lands INSIDE the collectible context. Measured consequence:
+            // the scripting ALC then never unloads - 15 of 15 hot reloads logged "Scripting
+            // AssemblyLoadContext was not unloaded", and the process accumulated the context's 6
+            // assemblies on every single reload (43 -> 133 over 15 cycles). With the assembly on
+            // the TPA the Default context wins resolution, the collectible context drops to 5
+            // assemblies, and the count is flat at 46 across the same 15 reloads with zero
+            // warnings.
+            //
+            // Optional by design: a fork with no F# in it simply does not ship the file, and the
+            // reference is skipped rather than breaking the build.
+            var fsharpCorePath = Utilities.RemovePathRelativeParts(Path.Combine(Globals.EngineRoot, "Source", "Platforms", "DotNet", "FSharp.Core.dll"));
+            if (File.Exists(fsharpCorePath))
+                options.ScriptingAPI.FileReferences.Add(fsharpCorePath);
         }
     }
 }
