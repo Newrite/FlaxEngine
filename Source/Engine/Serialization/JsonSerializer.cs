@@ -204,6 +204,10 @@ namespace FlaxEngine.Json
             settings.Converters.Add(new VersionConverter());
             settings.Converters.Add(new LocalizedStringConverter());
             settings.Converters.Add(new TagConverter());
+            // F# immutable collections. Both are no-ops unless FSharp.Core types actually appear
+            // in the graph, and neither adds a compile-time dependency on FSharp.Core.
+            settings.Converters.Add(new FSharpMapConverter());
+            settings.Converters.Add(new FSharpSetConverter());
             //settings.Converters.Add(new GuidConverter());
             return settings;
         }
@@ -221,6 +225,36 @@ namespace FlaxEngine.Json
 
                 Newtonsoft.Json.JsonSerializer.ClearCache();
                 SerializationBinder.ResetCache();
+                ResetFSharpUtilsCache();
+            }
+        }
+
+        /// <summary>
+        /// Clears Newtonsoft's one-shot FSharpUtils singleton, which ClearCache does not reach.
+        ///
+        /// FSharpUtils binds itself to the FSharp.Core it first saw and caches delegates built
+        /// from that assembly's types. It survives a scripting reload, so from the second reload
+        /// onward its stale IsUnion delegate is asked about types from the *new* FSharp.Core
+        /// identity, answers "not a union", and every discriminated union silently serializes as
+        /// {} - scene data loss with no error. The singleton also keeps the first collectible
+        /// AssemblyLoadContext alive forever and holds a lock on FSharp.Core.dll.
+        ///
+        /// Reflection is used because the field is private, and the whole thing is best-effort:
+        /// a project with no F# in it never initialises FSharpUtils at all.
+        /// </summary>
+        private static void ResetFSharpUtilsCache()
+        {
+            try
+            {
+                var utils = typeof(Newtonsoft.Json.JsonSerializer).Assembly.GetType("Newtonsoft.Json.Utilities.FSharpUtils");
+                var instance = utils?.GetField("_instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                if (instance != null && !instance.IsInitOnly)
+                    instance.SetValue(null, null);
+            }
+            catch (Exception)
+            {
+                // Newtonsoft's internals are not a contract. Failing to clear costs a leaked ALC,
+                // not correctness of this reload, so never let it break the reload itself.
             }
         }
 #endif

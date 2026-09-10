@@ -82,10 +82,40 @@ namespace FlaxEngine.Json.JsonCustomSerializers
             return contract;
         }
 
+        /// <summary>
+        /// Detects an F# record type without taking a compile-time dependency on FSharp.Core,
+        /// which is absent from projects that contain no F#.
+        ///
+        /// The compiler stamps every record with CompilationMappingAttribute carrying
+        /// SourceConstructFlags.RecordType (2). That is the only reliable signal: a record's
+        /// backing fields are private and its properties are get-only, which is otherwise
+        /// indistinguishable from an ordinary immutable C# class.
+        /// </summary>
+        private static bool IsFSharpRecord(Type type)
+        {
+            if (type == null || type.IsPrimitive || type == typeof(string) || !type.IsClass && !type.IsValueType)
+                return false;
+            foreach (var attribute in type.GetCustomAttributes(false))
+            {
+                var attributeType = attribute.GetType();
+                if (attributeType.FullName != "Microsoft.FSharp.Core.CompilationMappingAttribute")
+                    continue;
+                var flags = attributeType.GetProperty("SourceConstructFlags")?.GetValue(attribute);
+                if (flags != null && (int)flags == 2 /* SourceConstructFlags.RecordType */)
+                    return true;
+            }
+            return false;
+        }
+
         protected override IList<JsonProperty> CreateProperties(Type type, MemberSerialization memberSerialization)
         {
             var fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+            // An F# record has private backing fields and get-only properties, so the rules below
+            // would skip every member and emit {} - a silent, total loss of the object's contents.
+            // Records are read back through their constructor instead of through Populate.
+            var isFSharpRecord = IsFSharpRecord(type);
 
             var result = new List<JsonProperty>(fields.Length + properties.Length);
 
@@ -129,14 +159,19 @@ namespace FlaxEngine.Json.JsonCustomSerializers
             {
                 var p = properties[i];
 
-                // Serialize only properties with read/write
-                if (!(p.CanRead && p.CanWrite && p.GetIndexParameters().GetLength(0) == 0))
+                // Serialize only properties with read/write. A record's properties are get-only by
+                // construction, so the write requirement is waived for them and the value is
+                // restored through the constructor.
+                var recordProperty = isFSharpRecord && p.CanRead && !p.CanWrite;
+                if (!recordProperty && !(p.CanRead && p.CanWrite && p.GetIndexParameters().GetLength(0) == 0))
+                    continue;
+                if (recordProperty && p.GetIndexParameters().GetLength(0) != 0)
                     continue;
 
                 var attributes = p.GetCustomAttributes();
 
                 // Serialize non-public properties only with a proper attribute
-                if ((!p.GetMethod.IsPublic || !p.SetMethod.IsPublic) && !attributes.Any(x => x is SerializeAttribute))
+                if ((!p.GetMethod.IsPublic || (!recordProperty && !p.SetMethod.IsPublic)) && !attributes.Any(x => x is SerializeAttribute))
                     continue;
 
                 // Check if has attribute to skip serialization
@@ -156,8 +191,13 @@ namespace FlaxEngine.Json.JsonCustomSerializers
                 var isObsolete = attributes.Any(x => x is ObsoleteAttribute);
 
                 var jsonProperty = CreateProperty(p, memberSerialization);
-                jsonProperty.Writable = true;
+                jsonProperty.Writable = !recordProperty;
                 jsonProperty.Readable = !isObsolete;
+
+                // A record-typed member cannot be filled in place, so replace it wholesale rather
+                // than letting Populate try (and silently leave the old value behind).
+                if (IsFSharpRecord(p.PropertyType))
+                    jsonProperty.ObjectCreationHandling = ObjectCreationHandling.Replace;
 
                 if (_flaxType.IsAssignableFrom(p.PropertyType))
                 {
