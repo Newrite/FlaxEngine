@@ -25,6 +25,12 @@ type WithLetMutable() =
 /// A plain record: immutable, get-only properties, no parameterless constructor.
 type PlainRecord = { Name: string; Amount: int }
 
+/// A record whose field order is deliberately not alphabetical.
+type Ordered = { Zeta: int; Alpha: string }
+
+/// A record holding another record.
+type Outer = { Inner: PlainRecord; Tag: string }
+
 /// A record marked [<CLIMutable>]: gains a parameterless constructor and settable properties.
 [<CLIMutable>]
 type MutableRecord = { Name: string; Amount: int }

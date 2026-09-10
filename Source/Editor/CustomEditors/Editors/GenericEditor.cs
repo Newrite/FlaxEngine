@@ -81,6 +81,11 @@ namespace FlaxEditor.CustomEditors.Editors
             public bool ExpandGroups;
 
             /// <summary>
+            /// True if the member is a field of an F# record: a get-only property that is edited by building an updated record.
+            /// </summary>
+            public bool IsFSharpRecordField;
+
+            /// <summary>
             /// Gets the display name.
             /// </summary>
             public string DisplayName { get; }
@@ -146,6 +151,8 @@ namespace FlaxEditor.CustomEditors.Editors
             /// <returns>The values container.</returns>
             public ValueContainer GetValues(ValueContainer instanceValues)
             {
+                if (IsFSharpRecordField)
+                    return new FSharpRecordValueContainer(Info, instanceValues);
                 return new ValueContainer(Info, instanceValues);
             }
 
@@ -277,16 +284,23 @@ namespace FlaxEditor.CustomEditors.Editors
 
                     var attributes = p.GetAttributes(true);
                     var showInEditor = attributes.Any(x => x is ShowInEditorAttribute);
+                    var isFSharpRecordField = p.Type != null && FSharpRecord.IsField(p.Type);
 
-                    // Skip properties without getter or setter
-                    if (!p.HasGet || (!p.HasSet && !showInEditor && !usePropertiesWithoutSetter))
+                    // Skip properties without getter or setter (F# record fields are get-only but editable by building an updated record)
+                    if (!p.HasGet || (!p.HasSet && !showInEditor && !usePropertiesWithoutSetter && !isFSharpRecordField))
                         continue;
 
                     // Skip hidden fields, handle special attributes
                     if ((!p.IsPublic && !showInEditor) || attributes.Any(x => x is HideInEditorAttribute))
                         continue;
 
-                    items.Add(new ItemInfo(p, attributes));
+                    var item = new ItemInfo(p, attributes);
+                    if (isFSharpRecordField)
+                    {
+                        item.IsFSharpRecordField = true;
+                        item.IsReadOnly = attributes.Any(x => x is ReadOnlyAttribute);
+                    }
+                    items.Add(item);
                 }
             }
 

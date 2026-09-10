@@ -29,6 +29,7 @@
   <ItemGroup>
     <Compile Include="Fixtures.fs" />
     <Compile Include="TestSerialization.fs" />
+    <Compile Include="TestFSharpRecord.fs" />
   </ItemGroup>
 
   <ItemGroup>
