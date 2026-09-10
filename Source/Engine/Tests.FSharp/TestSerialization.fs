@@ -121,6 +121,24 @@ type TestSerialization() =
         areEqual (set [ "x"; "y" ]) clone.Tags
         areEqual 7 clone.Trailing
 
+    /// Test that the F# Map/Set converters do not claim .NET dictionaries and sets.
+    [<Test>]
+    member _.TestDotNetCollectionsUnaffected() =
+        let dictionary = WithDictionary(Trailing = 99)
+        dictionary.Table.["a"] <- 1
+        dictionary.Table.["b"] <- 2
+        let dictionaryClone = roundTrip dictionary
+        areEqual 2 dictionaryClone.Table.Count
+        areEqual 1 dictionaryClone.Table.["a"]
+        areEqual 99 dictionaryClone.Trailing
+
+        let hashSet = WithHashSet(Trailing = 42)
+        hashSet.Tags.Add "x" |> ignore
+        hashSet.Tags.Add "y" |> ignore
+        let hashSetClone = roundTrip hashSet
+        areEqual 2 hashSetClone.Tags.Count
+        areEqual 42 hashSetClone.Trailing
+
     /// Test that an immutable class which is not a record keeps its get-only properties out of the document.
     [<Test>]
     member _.TestImmutableClassIsNotRecord() =

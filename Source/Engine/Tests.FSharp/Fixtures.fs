@@ -73,6 +73,15 @@ type WithSet() =
     member val Tags: Set<string> = Set.empty with get, set
     member val Trailing = 0 with get, set
 
+/// .NET collections next to a trailing member: the F# collection converters must not claim them.
+type WithDictionary() =
+    member val Table = System.Collections.Generic.Dictionary<string, int>() with get, set
+    member val Trailing = 0 with get, set
+
+type WithHashSet() =
+    member val Tags = System.Collections.Generic.HashSet<string>() with get, set
+    member val Trailing = 0 with get, set
+
 /// An immutable class that is not a record: its get-only properties must stay out of the document.
 type ImmutableClass(name: string, amount: int) =
     new() = ImmutableClass(null, 0)
