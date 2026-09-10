@@ -115,4 +115,38 @@ namespace FlaxEditor.Content
             path = StringUtils.CombinePaths(Globals.EngineContentFolder, "Editor/Scripting/FSharpModuleTemplate.fs");
         }
     }
+
+    /// <summary>
+    /// Context proxy object for F# Actor files.
+    /// </summary>
+    /// <seealso cref="FlaxEditor.Content.FSharpProxy" />
+    [ContentContextMenu("New/F#/F# Actor")]
+    public class FSharpActorProxy : FSharpProxy
+    {
+        /// <inheritdoc />
+        public override string Name => "F# Actor";
+
+        /// <inheritdoc />
+        protected override void GetTemplatePath(out string path)
+        {
+            path = StringUtils.CombinePaths(Globals.EngineContentFolder, "Editor/Scripting/FSharpActorTemplate.fs");
+        }
+    }
+
+    /// <summary>
+    /// Context proxy object for F# GamePlugin files.
+    /// </summary>
+    /// <seealso cref="FlaxEditor.Content.FSharpProxy" />
+    [ContentContextMenu("New/F#/F# GamePlugin")]
+    public class FSharpGamePluginProxy : FSharpProxy
+    {
+        /// <inheritdoc />
+        public override string Name => "F# GamePlugin";
+
+        /// <inheritdoc />
+        protected override void GetTemplatePath(out string path)
+        {
+            path = StringUtils.CombinePaths(Globals.EngineContentFolder, "Editor/Scripting/FSharpGamePluginTemplate.fs");
+        }
+    }
 }
