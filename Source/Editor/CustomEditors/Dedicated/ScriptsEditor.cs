@@ -22,20 +22,26 @@ namespace FlaxEditor.CustomEditors.Dedicated
     {
         private string _scriptName;
 
+        /// <summary>
+        /// True to create an F# script (offered next to the C# one when the game project has an F# project).
+        /// </summary>
+        public readonly bool IsFSharp;
+
         public string ScriptName
         {
             get => _scriptName;
             set
             {
                 _scriptName = value;
-                Name = $"Create script '{value}'";
+                Name = IsFSharp ? $"Create F# script '{value}'" : $"Create script '{value}'";
             }
         }
 
-        public NewScriptItem(string scriptName)
+        public NewScriptItem(string scriptName, bool isFSharp = false)
         {
+            IsFSharp = isFSharp;
             ScriptName = scriptName;
-            TooltipText = "Create a new script";
+            TooltipText = isFSharp ? "Create a new F# script" : "Create a new script";
             DrawHighlights = false;
         }
     }
@@ -126,25 +132,29 @@ namespace FlaxEditor.CustomEditors.Dedicated
 
                     return;
                 }
+                var createItems = cm.ItemsPanel.Children.OfType<NewScriptItem>().ToList();
                 if (!cm.ItemsPanel.Children.Any(x => x.Visible && x is not NewScriptItem))
                 {
-                    // If there are no visible items, that means the search failed so we can find the create script button or create one if it's the first time
-                    var newScriptItem = (NewScriptItem)cm.ItemsPanel.Children.FirstOrDefault(x => x is NewScriptItem);
-                    if (newScriptItem != null)
+                    // If there are no visible items, that means the search failed so we can find the create script buttons or create them if it's the first time
+                    if (createItems.Count != 0)
                     {
-                        newScriptItem.Visible = true;
-                        newScriptItem.ScriptName = text;
+                        foreach (var newScriptItem in createItems)
+                        {
+                            newScriptItem.Visible = true;
+                            newScriptItem.ScriptName = text;
+                        }
                     }
                     else
                     {
                         cm.AddItem(new NewScriptItem(text));
+                        if (FSharpProjectFile.FindProjects(Globals.ProjectSourceFolder).Length != 0)
+                            cm.AddItem(new NewScriptItem(text, true));
                     }
                 }
                 else
                 {
-                    // Make sure to hide the create script button if there
-                    var newScriptItem = cm.ItemsPanel.Children.FirstOrDefault(x => x is NewScriptItem);
-                    if (newScriptItem != null)
+                    // Make sure to hide the create script buttons if there
+                    foreach (var newScriptItem in createItems)
                         newScriptItem.Visible = false;
                 }
             };
@@ -277,6 +287,16 @@ namespace FlaxEditor.CustomEditors.Dedicated
         private void CreateScript(NewScriptItem item)
         {
             ScriptsEditor.NewScriptName = item.ScriptName;
+            if (item.IsFSharp)
+            {
+                // F# scripts go into the first F# project; the proxy also appends the file to its Compile list
+                var project = FSharpProjectFile.FindProjects(Globals.ProjectSourceFolder).FirstOrDefault();
+                var fsharpProxy = Editor.Instance.ContentDatabase.Proxy.OfType<FSharpScriptProxy>().FirstOrDefault();
+                if (project == null || fsharpProxy == null)
+                    return;
+                fsharpProxy.Create(Path.Combine(Path.GetDirectoryName(project), item.ScriptName + ".fs"), null);
+                return;
+            }
             var paths = Directory.GetFiles(Globals.ProjectSourceFolder, "*.Build.cs");
 
             string moduleName = null;

@@ -156,6 +156,26 @@ namespace FlaxEngine.Tests
         }
 
         /// <summary>
+        /// Test listing the F# projects under a Source folder (used to offer F# script creation).
+        /// </summary>
+        [Test]
+        public void TestFindProjects()
+        {
+            var source = Path.Combine(_root, "Source");
+            CollectionAssert.IsEmpty(FSharpProjectFile.FindProjects(source));
+
+            File.WriteAllText(ProjectPath, Project);
+            var nested = Path.Combine(_root, "Source", "Game", "Nested", "Lib.fsproj");
+            Directory.CreateDirectory(Path.GetDirectoryName(nested));
+            File.WriteAllText(nested, Project);
+            File.WriteAllText(Path.Combine(_root, "Outside.fsproj"), Project);
+
+            // Ordinal path order, so the choice of the first project is deterministic
+            CollectionAssert.AreEqual(new[] { Path.GetFullPath(ProjectPath), Path.GetFullPath(nested) }, FSharpProjectFile.FindProjects(source));
+            CollectionAssert.IsEmpty(FSharpProjectFile.FindProjects(Path.Combine(_root, "Missing")));
+        }
+
+        /// <summary>
         /// Test adding a nested file to the project on disk: relative include and preserved UTF-8 BOM.
         /// </summary>
         [Test]

@@ -52,6 +52,22 @@ namespace FlaxEditor.Content
         }
 
         /// <summary>
+        /// Lists the F# projects under the given folder (eg. the game project Source folder), in ordinal path order.
+        /// </summary>
+        /// <param name="sourceFolder">The folder to search.</param>
+        /// <returns>The full paths of the found .fsproj files; empty if there are none or the folder does not exist.</returns>
+        public static string[] FindProjects(string sourceFolder)
+        {
+            if (!Directory.Exists(sourceFolder))
+                return Array.Empty<string>();
+            var projects = Directory.GetFiles(sourceFolder, "*.fsproj", SearchOption.AllDirectories);
+            for (int i = 0; i < projects.Length; i++)
+                projects[i] = Path.GetFullPath(projects[i]);
+            Array.Sort(projects, StringComparer.Ordinal);
+            return projects;
+        }
+
+        /// <summary>
         /// Gets the Include value for a source file, relative to the project folder.
         /// </summary>
         public static string GetInclude(string projectFile, string sourceFile)
