@@ -435,7 +435,7 @@ namespace FlaxEditor.Windows
         {
             var popup = new ContextMenuBase
             {
-                Size = new Float2(230, 125),
+                Size = new Float2(230, 150),
                 ClipChildren = false,
                 CullChildren = false,
             };
@@ -520,6 +520,37 @@ namespace FlaxEditor.Windows
             cppCheckBox.LocalY += 60;
             cppCheckBox.LocalX += 100;
 
+            var fsharpLabel = new Label
+            {
+                Parent = popup,
+                AnchorPreset = AnchorPresets.TopLeft,
+                Text = "F#",
+                HorizontalAlignment = TextAlignment.Near,
+            };
+            fsharpLabel.LocalX += 10;
+            fsharpLabel.LocalY += 85;
+
+            var fsharpCheckBox = new CheckBox
+            {
+                Parent = popup,
+                AnchorPreset = AnchorPresets.TopLeft,
+                TooltipText = "Write the module in F#: creates its F# project (.fsproj) with a first source file.",
+            };
+            fsharpCheckBox.LocalY += 85;
+            fsharpCheckBox.LocalX += 100;
+
+            // A module is written either in C++ (with C#) or in F#
+            cppCheckBox.StateChanged += checkBox =>
+            {
+                if (checkBox.Checked)
+                    fsharpCheckBox.Checked = false;
+            };
+            fsharpCheckBox.StateChanged += checkBox =>
+            {
+                if (checkBox.Checked)
+                    cppCheckBox.Checked = false;
+            };
+
             var submitButton = new Button
             {
                 Parent = popup,
@@ -528,7 +559,7 @@ namespace FlaxEditor.Windows
                 Width = 70,
             };
             submitButton.LocalX += 40;
-            submitButton.LocalY += 90;
+            submitButton.LocalY += 115;
             submitButton.Clicked += () =>
             {
                 // TODO: Check all modules in project including plugins
@@ -543,10 +574,11 @@ namespace FlaxEditor.Windows
                     Editor.LogWarning("Cannot create module due to name conflict.");
                     return;
                 }
-                Editor.CodeEditing.CreateModule(path, nameTextBox.Text, editorCheckBox.Checked, cppCheckBox.Checked);
+                Editor.CodeEditing.CreateModule(path, nameTextBox.Text, editorCheckBox.Checked, cppCheckBox.Checked, fsharpCheckBox.Checked);
                 nameTextBox.Clear();
                 editorCheckBox.Checked = false;
                 cppCheckBox.Checked = false;
+                fsharpCheckBox.Checked = false;
                 popup.Hide();
                 button.ParentContextMenu.Hide();
             };
@@ -559,7 +591,7 @@ namespace FlaxEditor.Windows
                 Width = 70,
             };
             cancelButton.LocalX += 120;
-            cancelButton.LocalY += 90;
+            cancelButton.LocalY += 115;
             cancelButton.Clicked += () =>
             {
                 nameTextBox.Clear();

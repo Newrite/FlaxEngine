@@ -1,0 +1,44 @@
+<Project>
+
+  <!--
+    The project file of the F# module %module%, which Flax.Build compiles (see %module%.Build.cs). MSBuild evaluates it
+    for the build, so it can use what any SDK-style project can: conditions, imports, NuGet packages.
+
+    COMPILE ORDER IS SIGNIFICANT IN F#: a file can only use what precedes it. The Content window appends new files
+    to the Compile list below; move one up if code above it needs it.
+
+    Flax.Build passes the build settings (preprocessor defines, target framework, engine and dependency module
+    assemblies). An IDE opening this project gets them from %module%.Ide.props, written by the editor build.
+  -->
+  <PropertyGroup>
+    <!-- An IDE building the project itself keeps its output out of Source, which the Content window shows -->
+    <BaseIntermediateOutputPath>%cache%/Ide/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>%cache%/Ide/$(MSBuildProjectName)/bin/</BaseOutputPath>
+    <FlaxGeneratedProps Condition="'$(FlaxGeneratedProps)' == ''">%cache%/$(MSBuildProjectName).Ide.props</FlaxGeneratedProps>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <Import Project="$(FlaxGeneratedProps)" Condition="Exists('$(FlaxGeneratedProps)')" />
+
+  <PropertyGroup>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0</TargetFramework>
+    <AssemblyName>%module%</AssemblyName>
+    <RootNamespace>%module%</RootNamespace>
+    <OutputType>Library</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Library.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="FlaxEngine.CSharp" Condition="'$(FlaxEngineAssembly)' != ''">
+      <HintPath>$(FlaxEngineAssembly)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+</Project>

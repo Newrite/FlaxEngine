@@ -343,7 +343,7 @@ namespace FlaxEditor.Modules.SourceCodeEditing
         /// <summary>
         /// Starts creating a new module
         /// </summary>
-        internal void CreateModule(string path, string moduleName, bool editorModule, bool cpp)
+        internal void CreateModule(string path, string moduleName, bool editorModule, bool cpp, bool fsharp = false)
         {
             if (string.IsNullOrEmpty(moduleName) || string.IsNullOrEmpty(path))
             {
@@ -356,7 +356,8 @@ namespace FlaxEditor.Modules.SourceCodeEditing
             Directory.CreateDirectory(moduleFolderPath);
 
             // Create module
-            var moduleText = "using Flax.Build;\n" +
+            var moduleText = fsharp ? GetFSharpModuleText(moduleName, editorModule) :
+                             "using Flax.Build;\n" +
                              "using Flax.Build.NativeCpp;\n" +
                              $"\npublic class {moduleName} : Game{(editorModule ? "Editor" : "")}Module\n" +
                              "{\n    " +
@@ -388,6 +389,10 @@ namespace FlaxEditor.Modules.SourceCodeEditing
             File.WriteAllText(modulePath, moduleText);
             Editor.Log($"Module created at {modulePath}");
 
+            // An F# module also needs its project file (which lists the source files) and a first source file
+            if (fsharp)
+                CreateFSharpModuleProject(moduleFolderPath, moduleName);
+
             // Get editor target and target files and add module
             var files = Directory.GetFiles(path);
             var targetModuleText = $"Modules.Add(nameof({moduleName}));\n        ";
@@ -412,6 +417,40 @@ namespace FlaxEditor.Modules.SourceCodeEditing
             }
         }
 
+        private static string GetFSharpModuleText(string moduleName, bool editorModule)
+        {
+            return "using Flax.Build;\n" +
+                   "using Flax.Build.NativeCpp;\n" +
+                   $"\npublic class {moduleName} : FSharpModule\n" +
+                   "{\n" +
+                   "    /// <inheritdoc />\n" +
+                   "    public override void Setup(BuildOptions options)\n" +
+                   "    {\n" +
+                   "        base.Setup(options);\n" +
+                   (editorModule ? "\n        // Reference main editor modules\n        options.PublicDependencies.Add(\"Editor\");\n" : string.Empty) +
+                   "\n" +
+                   "        // Here you can modify the build options for your F# module\n" +
+                   "        // To reference another module use: options.PublicDependencies.Add(\"Audio\");\n" +
+                   $"        // The F# source files (in compile order), NuGet packages and assembly references are listed in {moduleName}.fsproj.\n" +
+                   "        // To learn more see scripting documentation.\n" +
+                   "    }\n" +
+                   "}";
+        }
+
+        private static void CreateFSharpModuleProject(string moduleFolderPath, string moduleName)
+        {
+            // The project file, from the template; its paths to the IDE output and settings are relative to the module folder
+            var cacheFolder = Path.GetRelativePath(moduleFolderPath, Path.Combine(Globals.ProjectCacheFolder, "Intermediate", "FSharp")).Replace('\\', '/');
+            var projectText = File.ReadAllText(StringUtils.CombinePaths(Globals.EngineContentFolder, "Editor/Scripting/FSharpProjectTemplate.fsproj"));
+            projectText = projectText.Replace("%module%", moduleName).Replace("%cache%", "$(MSBuildThisFileDirectory)" + cacheFolder);
+            var projectPath = Path.Combine(moduleFolderPath, $"{moduleName}.fsproj");
+            File.WriteAllText(projectPath, projectText);
+            Editor.Log($"F# project created at {projectPath}");
+
+            // The first source file (an F# assembly needs one), the same New > F# > F# Module creates; the project lists it already
+            new FlaxEditor.Content.FSharpModuleProxy().Create(StringUtils.NormalizePath(Path.Combine(moduleFolderPath, "Library.fs")), null);
+        }
+
         internal void RemoveModule(string path)
         {
             if (!File.Exists(path))
@@ -421,7 +460,11 @@ namespace FlaxEditor.Modules.SourceCodeEditing
             var editorModule = false;
             var moduleTextIndex = -1;
             var fileText = File.ReadAllText(path);
-            if (fileText.Contains("GameModule", StringComparison.Ordinal))
+            if (fileText.Contains("FSharpModule", StringComparison.Ordinal))
+            {
+                moduleTextIndex = fileText.IndexOf("FSharpModule", StringComparison.Ordinal);
+            }
+            else if (fileText.Contains("GameModule", StringComparison.Ordinal))
             {
                 moduleTextIndex = fileText.IndexOf("GameModule", StringComparison.Ordinal);
             }
@@ -444,10 +487,37 @@ namespace FlaxEditor.Modules.SourceCodeEditing
                 return;
             }
 
-            // Get module name
+            // Get module name: the identifier after "class " (the base type name can be a part of it too, eg. MyGameModule : GameModule)
             var classTextIndex = fileText.IndexOf("class ", StringComparison.Ordinal);
-            var className = fileText.Substring(classTextIndex, moduleTextIndex - classTextIndex).Replace("class ", "").Replace(":", "").Trim();
+            if (classTextIndex < 0 || moduleTextIndex < 0)
+                return;
+            var classNameStart = classTextIndex + "class ".Length;
+            var classNameEnd = classNameStart;
+            while (classNameEnd < fileText.Length && (char.IsLetterOrDigit(fileText[classNameEnd]) || fileText[classNameEnd] == '_'))
+                classNameEnd++;
+            var className = fileText.Substring(classNameStart, classNameEnd - classNameStart);
             Editor.Log($"Removing Module: {className}");
+
+            // Removes the statement with its line if it is alone on it (as CreateModule adds it), so the target file is as before
+            static string RemoveStatement(string text, string statement)
+            {
+                int index;
+                while ((index = text.IndexOf(statement, StringComparison.Ordinal)) >= 0)
+                {
+                    var start = index;
+                    var end = index + statement.Length;
+                    var lineStart = index == 0 ? 0 : text.LastIndexOf('\n', index - 1) + 1;
+                    var lineEnd = text.IndexOf('\n', end);
+                    lineEnd = lineEnd < 0 ? text.Length : lineEnd + 1;
+                    if (string.IsNullOrWhiteSpace(text.Substring(lineStart, index - lineStart)) && string.IsNullOrWhiteSpace(text.Substring(end, lineEnd - end)))
+                    {
+                        start = lineStart;
+                        end = lineEnd;
+                    }
+                    text = text.Remove(start, end - start);
+                }
+                return text;
+            }
 
             // Find target files
             // Assume Target files are in the source directory that is up 2 levels
@@ -467,19 +537,9 @@ namespace FlaxEditor.Modules.SourceCodeEditing
                         if (editorModule && targetText.Contains("GameProjectTarget", StringComparison.Ordinal))
                             continue;
 
-                        var newText = targetText;
-                        bool removedModuleText = false;
-                        if (targetText.Contains($"Modules.Add(\"{className}\")", StringComparison.Ordinal))
-                        {
-                            newText = newText.Replace($"Modules.Add(\"{className}\");\n", "", StringComparison.Ordinal).Replace($"Modules.Add(\"{className}\");", "", StringComparison.Ordinal);
-                            removedModuleText = true;
-                        }
-
-                        if (targetText.Contains($"Modules.Add(nameof({className}))", StringComparison.Ordinal))
-                        {
-                            newText = newText.Replace($"Modules.Add(nameof({className}));\n", "", StringComparison.Ordinal).Replace($"Modules.Add(nameof({className}));", "", StringComparison.Ordinal);
-                            removedModuleText = true;
-                        }
+                        var newText = RemoveStatement(targetText, $"Modules.Add(\"{className}\");");
+                        newText = RemoveStatement(newText, $"Modules.Add(nameof({className}));");
+                        bool removedModuleText = !string.Equals(newText, targetText, StringComparison.Ordinal);
                         if (removedModuleText)
                         {
                             File.WriteAllText(file, newText);
