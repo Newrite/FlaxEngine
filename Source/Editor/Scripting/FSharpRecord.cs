@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.FSharp.Core;
+using Microsoft.FSharp.Reflection;
 
 namespace FlaxEditor.Scripting
 {
@@ -11,30 +13,12 @@ namespace FlaxEditor.Scripting
     /// Helpers for F# record types. Records are immutable - their fields are get-only properties set through the constructor - so editing a field means building an updated copy of the record.
     /// </summary>
     /// <remarks>
-    /// Records are recognized by the CompilationMappingAttribute the F# compiler stamps on them (read by name, so the editor does not depend on FSharp.Core).
+    /// Built on FSharp.Core's own reflection API (Microsoft.FSharp.Reflection). This is editor code, so the FSharp.Core reference stays out of the engine assembly games ship.
     /// </remarks>
     public static class FSharpRecord
     {
-        private const string CompilationMappingAttribute = "Microsoft.FSharp.Core.CompilationMappingAttribute";
-        private const int KindMask = 31; // SourceConstructFlags.KindMask
-        private const int RecordType = 2; // SourceConstructFlags.RecordType
-        private const int Field = 4; // SourceConstructFlags.Field
-
-        private static bool TryGetMapping(MemberInfo member, out int kind, out int sequenceNumber)
-        {
-            foreach (var attribute in member.GetCustomAttributes(false))
-            {
-                var attributeType = attribute.GetType();
-                if (attributeType.FullName != CompilationMappingAttribute)
-                    continue;
-                kind = Convert.ToInt32(attributeType.GetProperty("SourceConstructFlags")?.GetValue(attribute) ?? 0) & KindMask;
-                sequenceNumber = Convert.ToInt32(attributeType.GetProperty("SequenceNumber")?.GetValue(attribute) ?? 0);
-                return true;
-            }
-            kind = 0;
-            sequenceNumber = 0;
-            return false;
-        }
+        // Public and non-public: a record with a private representation is still a record
+        private static readonly FSharpOption<BindingFlags> AllRepresentations = FSharpOption<BindingFlags>.Some(BindingFlags.Public | BindingFlags.NonPublic);
 
         /// <summary>
         /// Checks if the given type is an F# record.
@@ -43,9 +27,7 @@ namespace FlaxEditor.Scripting
         /// <returns>True if the type is an F# record, otherwise false.</returns>
         public static bool IsRecord(Type type)
         {
-            if (type == null || type.IsPrimitive || type == typeof(string))
-                return false;
-            return TryGetMapping(type, out var kind, out _) && kind == RecordType;
+            return type != null && FSharpType.IsRecord(type, AllRepresentations);
         }
 
         /// <summary>
@@ -55,7 +37,9 @@ namespace FlaxEditor.Scripting
         /// <returns>True if the member is a record field property, otherwise false.</returns>
         public static bool IsField(MemberInfo member)
         {
-            return member is PropertyInfo && IsRecord(member.DeclaringType) && TryGetMapping(member, out var kind, out _) && kind == Field;
+            if (!(member is PropertyInfo) || !IsRecord(member.DeclaringType))
+                return false;
+            return FSharpType.GetRecordFields(member.DeclaringType, AllRepresentations).Any(x => x.Name == member.Name);
         }
 
         /// <summary>
@@ -67,12 +51,7 @@ namespace FlaxEditor.Scripting
         {
             if (!IsRecord(type))
                 throw new ArgumentException($"Type '{type}' is not an F# record.", nameof(type));
-            return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                       .Select(p => (Property: p, IsField: TryGetMapping(p, out var kind, out var sequenceNumber) && kind == Field, Order: sequenceNumber))
-                       .Where(x => x.IsField)
-                       .OrderBy(x => x.Order)
-                       .Select(x => x.Property)
-                       .ToArray();
+            return FSharpType.GetRecordFields(type, AllRepresentations);
         }
 
         /// <summary>
@@ -88,13 +67,10 @@ namespace FlaxEditor.Scripting
         private static object CreateDefault(Type type, HashSet<Type> creating)
         {
             var fields = GetFields(type);
-            var constructor = type.GetConstructor(fields.Select(x => x.PropertyType).ToArray());
-            if (constructor == null)
-                throw new InvalidOperationException($"F# record '{type}' has no constructor taking all of its fields.");
             creating.Add(type);
             try
             {
-                return constructor.Invoke(fields.Select(x => GetDefaultValue(x.PropertyType, creating)).ToArray());
+                return FSharpValue.MakeRecord(type, fields.Select(x => GetDefaultValue(x.PropertyType, creating)).ToArray(), AllRepresentations);
             }
             finally
             {
@@ -142,14 +118,12 @@ namespace FlaxEditor.Scripting
             if (record == null)
                 throw new ArgumentNullException(nameof(record));
             var type = record.GetType();
-            var fields = GetFields(type);
-            if (fields.All(x => x.Name != fieldName))
+            var index = Array.FindIndex(GetFields(type), x => x.Name == fieldName);
+            if (index < 0)
                 throw new ArgumentException($"F# record '{type}' has no field '{fieldName}'.", nameof(fieldName));
-            var constructor = type.GetConstructor(fields.Select(x => x.PropertyType).ToArray());
-            if (constructor == null)
-                throw new InvalidOperationException($"F# record '{type}' has no constructor taking all of its fields.");
-            var args = fields.Select(x => x.Name == fieldName ? value : x.GetValue(record)).ToArray();
-            return constructor.Invoke(args);
+            var values = FSharpValue.GetRecordFields(record, AllRepresentations);
+            values[index] = value;
+            return FSharpValue.MakeRecord(type, values, AllRepresentations);
         }
     }
 }
