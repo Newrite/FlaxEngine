@@ -29,7 +29,7 @@ namespace Flax.Deploy
                 Utilities.DirectoryDelete(dst);
 
                 // Deploy debug files for crashes debugging
-                foreach (var configuration in new[] { TargetConfiguration.Debug, TargetConfiguration.Development, TargetConfiguration.Release  })
+                foreach (var configuration in Deployer.Configurations)
                 {
                     if (platform == TargetPlatform.Windows)
                     {

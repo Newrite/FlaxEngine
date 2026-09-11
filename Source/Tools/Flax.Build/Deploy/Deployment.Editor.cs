@@ -81,6 +81,16 @@ namespace Flax.Deploy
                     DeployFile(RootPath, OutputPath, subDir, "Newtonsoft.Json.dll");
                     DeployFile(RootPath, OutputPath, subDir, "Newtonsoft.Json.xml");
                     DeployFile(RootPath, OutputPath, Path.Combine(subDir, "AOT"), "Newtonsoft.Json.dll");
+                    DeployFile(RootPath, OutputPath, subDir, "FSharp.Core.dll");
+                }
+
+                // Deploy F# compiler host (F# modules build without it too, just slower)
+                {
+                    var subDir = "Source/Tools/FlaxFSharpCompiler/bin/Release";
+                    if (File.Exists(Path.Combine(RootPath, subDir, "FlaxFSharpCompiler.exe")))
+                        DeployFolder(RootPath, OutputPath, subDir);
+                    else
+                        Log.Warning("Missing F# compiler host, build it with: dotnet build -c Release Source/Tools/FlaxFSharpCompiler");
                 }
 
                 // Deploy sources
