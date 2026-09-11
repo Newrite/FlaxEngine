@@ -103,6 +103,29 @@ namespace Flax.Build.NativeCpp
             Framework = framework;
         }
 
+        /// <summary>
+        /// Checks if a framework name from a package specification (.nuspec) is the given target framework. Nuspec files can use the full framework names (eg. .NETStandard2.0 for netstandard2.0, .NETCoreApp5.0 for net5.0).
+        /// </summary>
+        /// <param name="nuspecFramework">The framework name from the package specification.</param>
+        /// <param name="framework">The target framework. ex. net8.0, netstandard2.1, etc.</param>
+        /// <returns>True if both name the same framework, otherwise false.</returns>
+        public static bool IsSameFramework(string nuspecFramework, string framework)
+        {
+            if (string.IsNullOrEmpty(nuspecFramework) || string.IsNullOrEmpty(framework))
+                return false;
+            if (string.Equals(nuspecFramework, framework, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (nuspecFramework.StartsWith(".NETStandard", StringComparison.OrdinalIgnoreCase))
+                return string.Equals("netstandard" + nuspecFramework.Substring(12), framework, StringComparison.OrdinalIgnoreCase);
+            if (nuspecFramework.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase))
+            {
+                var version = nuspecFramework.Substring(11);
+                return string.Equals("netcoreapp" + version, framework, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals("net" + version, framework, StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+
         internal string GetLibFolder(string nugetPath)
         {
             var libFolder = Path.Combine(nugetPath, Name, Version, "lib", Framework);

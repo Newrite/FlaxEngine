@@ -499,21 +499,7 @@ namespace Flax.Build
 
         private static bool IsNugetFramework(string nuspecFramework, string framework)
         {
-            if (string.IsNullOrEmpty(nuspecFramework))
-                return false;
-            if (string.Equals(nuspecFramework, framework, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            // Nuspec files can use the full framework names (eg. .NETStandard2.0 for netstandard2.0, .NETCoreApp5.0 for net5.0)
-            if (nuspecFramework.StartsWith(".NETStandard", StringComparison.OrdinalIgnoreCase))
-                return string.Equals("netstandard" + nuspecFramework.Substring(12), framework, StringComparison.OrdinalIgnoreCase);
-            if (nuspecFramework.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase))
-            {
-                var version = nuspecFramework.Substring(11);
-                return string.Equals("netcoreapp" + version, framework, StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals("net" + version, framework, StringComparison.OrdinalIgnoreCase);
-            }
-            return false;
+            return NugetPackage.IsSameFramework(nuspecFramework, framework);
         }
 
         private static void DeployNuGetPackage(string nugetPath, BuildOptions targetBuildOptions, HashSet<string> nugetFiles, NugetPackage package, string folder = null)

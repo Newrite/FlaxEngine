@@ -1,13 +1,16 @@
 // Copyright (c) Wojciech Figat. All rights reserved.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using Flax.Build.NativeCpp;
 using NUnit.Framework;
 
 namespace Flax.Build.Tests
 {
     /// <summary>
-    /// Tests reading the F# project file an F# module is compiled from.
+    /// Tests reading the F# project file an F# module is compiled from. The project is evaluated by the real MSBuild of the installed .NET SDK, restoring the OneOf package (from the NuGet cache, or from nuget.org).
     /// </summary>
     [TestFixture]
     public class TestFSharpProjectFile
@@ -27,16 +30,32 @@ namespace Flax.Build.Tests
             Directory.Delete(_folder, true);
         }
 
-        private FSharpProjectFile Load(string items)
-        {
-            var path = Path.Combine(_folder, "Test.fsproj");
-            File.WriteAllText(path, "<Project Sdk=\"Microsoft.NET.Sdk\">\n" + items + "\n</Project>");
-            return FSharpProjectFile.Load(path);
-        }
-
         private string InFolder(string path)
         {
             return Path.GetFullPath(Path.Combine(_folder, path));
+        }
+
+        private void WriteFile(string path, string contents)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(InFolder(path)));
+            File.WriteAllText(InFolder(path), contents);
+        }
+
+        private string WriteProject(string items)
+        {
+            WriteFile("Test.fsproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n" +
+                                     "  <PropertyGroup><EnableDefaultCompileItems>false</EnableDefaultCompileItems><DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference></PropertyGroup>\n" +
+                                     items + "\n</Project>");
+            return InFolder("Test.fsproj");
+        }
+
+        private FSharpProjectFile Load(string configuration = "Release")
+        {
+            return FSharpProjectFile.Load(InFolder("Test.fsproj"), InFolder("Intermediate"), new Dictionary<string, string>
+            {
+                { "Configuration", configuration },
+                { "TargetFramework", "net8.0" },
+            });
         }
 
         /// <summary>
@@ -45,69 +64,123 @@ namespace Flax.Build.Tests
         [Test]
         public void TestCompileItemsKeepProjectOrder()
         {
-            var project = Load(@"<ItemGroup><Compile Include=""Zeta.fs"" /><Compile Include=""Alpha.fsi"" /><Compile Include=""Alpha.fs"" /></ItemGroup>
+            WriteProject(@"<ItemGroup><Compile Include=""Zeta.fs"" /><Compile Include=""Alpha.fsi"" /><Compile Include=""Alpha.fs"" /></ItemGroup>
 <ItemGroup><Compile Include=""Sub\Middle.fs"" /></ItemGroup>");
 
-            CollectionAssert.AreEqual(new[] { InFolder("Zeta.fs"), InFolder("Alpha.fsi"), InFolder("Alpha.fs"), InFolder(@"Sub\Middle.fs") }, project.CompileItems);
+            CollectionAssert.AreEqual(new[] { InFolder("Zeta.fs"), InFolder("Alpha.fsi"), InFolder("Alpha.fs"), InFolder(@"Sub\Middle.fs") }, Load().CompileItems);
         }
 
         /// <summary>
-        /// Test that items MSBuild would have to evaluate are skipped rather than passed on as paths.
+        /// Test that conditions are evaluated for the build configuration.
         /// </summary>
         [Test]
-        public void TestUnevaluatedItemsAreSkipped()
+        public void TestConditionsAreEvaluated()
         {
-            var project = Load(@"<ItemGroup><Compile Include=""$(Generated)\A.fs"" /><Compile Include=""*.fs"" /><Compile Include=""B.fs"" /></ItemGroup>");
+            WriteProject(@"<ItemGroup><Compile Include=""Common.fs"" /><Compile Include=""DebugOnly.fs"" Condition=""'$(Configuration)' == 'Debug'"" /></ItemGroup>");
 
-            CollectionAssert.AreEqual(new[] { InFolder("B.fs") }, project.CompileItems);
+            CollectionAssert.AreEqual(new[] { InFolder("Common.fs") }, Load("Release").CompileItems);
+            CollectionAssert.AreEqual(new[] { InFolder("Common.fs"), InFolder("DebugOnly.fs") }, Load("Debug").CompileItems);
         }
 
         /// <summary>
-        /// Test reading NuGet packages with the version as an attribute or an element.
+        /// Test that wildcards and imported project files are evaluated, in project order.
         /// </summary>
         [Test]
-        public void TestPackageReferences()
+        public void TestWildcardsAndImportsAreEvaluated()
         {
-            var project = Load(@"<ItemGroup>
-  <PackageReference Include=""OneOf"" Version=""3.0.271"" />
-  <PackageReference Include=""Other""><Version>1.2.3</Version></PackageReference>
-  <PackageReference Include=""Floating"" Version=""1.*"" />
-  <PackageReference Include=""Central"" />
-</ItemGroup>");
+            WriteFile(@"Generated\B.fs", "module B");
+            WriteFile(@"Generated\A.fs", "module A");
+            WriteFile("Generated.props", @"<Project><ItemGroup><Compile Include=""Generated\*.fs"" /></ItemGroup></Project>");
+            WriteProject(@"<Import Project=""Generated.props"" /><ItemGroup><Compile Include=""Main.fs"" /></ItemGroup>");
 
-            Assert.AreEqual(2, project.PackageReferences.Count);
-            Assert.AreEqual("OneOf", project.PackageReferences[0].Name);
-            Assert.AreEqual("3.0.271", project.PackageReferences[0].Version);
-            Assert.AreEqual("Other", project.PackageReferences[1].Name);
-            Assert.AreEqual("1.2.3", project.PackageReferences[1].Version);
+            CollectionAssert.AreEqual(new[] { InFolder(@"Generated\A.fs"), InFolder(@"Generated\B.fs"), InFolder("Main.fs") }, Load().CompileItems);
         }
 
         /// <summary>
-        /// Test reading assemblies referenced by path, skipping framework assemblies and ones found through MSBuild properties (eg. the engine assembly, which the build references itself).
+        /// Test that NuGet resolves the packages, here with the version from central package management rather than the project file.
+        /// </summary>
+        [Test]
+        public void TestPackagesAreResolvedByNuGet()
+        {
+            WriteFile("Directory.Packages.props", @"<Project>
+  <PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup>
+  <ItemGroup><PackageVersion Include=""OneOf"" Version=""3.0.271"" /></ItemGroup>
+</Project>");
+            WriteProject(@"<ItemGroup><Compile Include=""Main.fs"" /><PackageReference Include=""OneOf"" /></ItemGroup>");
+
+            var project = Load();
+
+            var oneOf = project.References.SingleOrDefault(x => Path.GetFileName(x) == "OneOf.dll");
+            Assert.IsNotNull(oneOf, "the package assembly must be referenced: " + string.Join(", ", project.References));
+            StringAssert.Contains("3.0.271", oneOf);
+            StringAssert.Contains("netstandard2.0", oneOf, "NuGet picks the assemblies usable on the target framework");
+            CollectionAssert.Contains(project.CopyLocalFiles, oneOf, "the package runtime assembly must be deployed");
+            Assert.IsFalse(project.References.Any(x => x.Contains("Microsoft.NETCore.App.Ref")), "framework assemblies are referenced by the build itself");
+        }
+
+        /// <summary>
+        /// Test reading assemblies referenced by path: deployed unless not copied locally (Private=false).
         /// </summary>
         [Test]
         public void TestReferencesByPath()
         {
-            var project = Load(@"<ItemGroup>
-  <Reference Include=""Library""><HintPath>..\Libs\Library.dll</HintPath></Reference>
-  <Reference Include=""FlaxEngine.CSharp""><HintPath>$(FlaxEngineAssembly)</HintPath><Private>false</Private></Reference>
-  <Reference Include=""System.Numerics"" />
+            // Two different assemblies: references are resolved by assembly identity, not by file name
+            var library = InFolder(@"Libs\Flax.Build.Tests.dll");
+            var provided = InFolder(@"Libs\nunit.framework.dll");
+            Directory.CreateDirectory(InFolder("Libs"));
+            File.Copy(typeof(TestFSharpProjectFile).Assembly.Location, library);
+            File.Copy(typeof(Assert).Assembly.Location, provided);
+            WriteProject(@"<ItemGroup>
+  <Compile Include=""Main.fs"" />
+  <Reference Include=""Flax.Build.Tests""><HintPath>Libs\Flax.Build.Tests.dll</HintPath></Reference>
+  <Reference Include=""nunit.framework""><HintPath>Libs\nunit.framework.dll</HintPath><Private>false</Private></Reference>
 </ItemGroup>");
 
-            CollectionAssert.AreEqual(new[] { InFolder(@"..\Libs\Library.dll") }, project.References);
+            var project = Load();
+
+            CollectionAssert.IsSupersetOf(project.References, new[] { library, provided });
+            CollectionAssert.Contains(project.CopyLocalFiles, library);
+            CollectionAssert.DoesNotContain(project.CopyLocalFiles, provided);
         }
 
         /// <summary>
-        /// Test picking the NuGet package assemblies usable on the runtime.
+        /// Test that the evaluation is cached, and evaluated again when the project file changes or a source file is added (which can change what a wildcard includes) - but not when a source file is edited.
         /// </summary>
         [Test]
-        public void TestSelectLibFramework()
+        public void TestEvaluationIsCached()
         {
-            Assert.AreEqual("netstandard2.0", FSharpProjectFile.SelectLibFramework(new[] { "net35", "net45", "netstandard1.3", "netstandard2.0" }, "net10.0"));
-            Assert.AreEqual("net8.0", FSharpProjectFile.SelectLibFramework(new[] { "netstandard2.1", "net6.0", "net8.0", "net11.0" }, "net10.0"), "the newest .NET not newer than the runtime");
-            Assert.AreEqual("netcoreapp3.1", FSharpProjectFile.SelectLibFramework(new[] { "netstandard2.1", "netcoreapp3.1" }, "net8.0"));
-            Assert.AreEqual("netstandard2.0", FSharpProjectFile.SelectLibFramework(new[] { "net8.0-windows7.0", "netstandard2.0" }, "net8.0"), "platform specific assemblies need that platform");
-            Assert.IsNull(FSharpProjectFile.SelectLibFramework(new[] { "net45" }, "net8.0"), ".NET Framework assemblies cannot be used");
+            WriteFile("Main.fs", "module Main");
+            var path = WriteProject(@"<ItemGroup><Compile Include=""*.fs"" /></ItemGroup>");
+
+            Assert.IsFalse(Load().FromCache, "the first load evaluates the project");
+            Assert.IsTrue(Load().FromCache, "an unchanged project must not be evaluated again");
+
+            File.AppendAllText(InFolder("Main.fs"), "\nlet x = 1");
+            Assert.IsTrue(Load().FromCache, "editing a source file must not evaluate the project again");
+
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(5));
+            Assert.IsFalse(Load().FromCache, "a changed project file must be evaluated again");
+
+            WriteFile("Other.fs", "module Other");
+            var project = Load();
+            Assert.IsFalse(project.FromCache, "an added source file must evaluate the project again");
+            CollectionAssert.AreEqual(new[] { InFolder("Main.fs"), InFolder("Other.fs") }, project.CompileItems);
+
+            Assert.IsFalse(Load("Debug").FromCache, "other properties must evaluate the project again");
+        }
+
+        /// <summary>
+        /// Test matching the framework names of package specifications, which can use the full names.
+        /// </summary>
+        [Test]
+        public void TestNugetFrameworkNames()
+        {
+            Assert.IsTrue(NugetPackage.IsSameFramework(".NETStandard2.0", "netstandard2.0"));
+            Assert.IsTrue(NugetPackage.IsSameFramework(".NETCoreApp3.1", "netcoreapp3.1"));
+            Assert.IsTrue(NugetPackage.IsSameFramework(".NETCoreApp5.0", "net5.0"));
+            Assert.IsTrue(NugetPackage.IsSameFramework("net8.0", "net8.0"));
+            Assert.IsFalse(NugetPackage.IsSameFramework(".NETStandard2.0", "netstandard2.1"));
+            Assert.IsFalse(NugetPackage.IsSameFramework(null, "net8.0"));
         }
     }
 }

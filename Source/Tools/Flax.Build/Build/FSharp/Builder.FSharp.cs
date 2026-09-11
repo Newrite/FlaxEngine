@@ -39,7 +39,7 @@ namespace Flax.Build
         /// Adds the task compiling the F# module to the build graph.
         /// </summary>
         /// <remarks>
-        /// The compiler is fsc from the .NET SDK the engine compiles its C# with, run directly (not through MSBuild) and through the warm compiler host when it is built (Source/Tools/FlaxFSharpCompiler). The task is ordered after the modules it depends on and before the modules depending on it by the task graph itself: it takes their assemblies as prerequisites, and they take its assembly (see <see cref="BuildTargetBindings"/>).
+        /// The project file is evaluated by MSBuild (see <see cref="FSharpProjectFile"/>), but compiling is not left to MSBuild: fsc from the .NET SDK the engine compiles its C# with is run directly, through the warm compiler host when it is built (Source/Tools/FlaxFSharpCompiler), which saves MSBuild's second or so on every edit. The task is ordered after the modules it depends on and before the modules depending on it by the task graph itself: it takes their assemblies as prerequisites, and they take its assembly (see <see cref="BuildTargetBindings"/>).
         /// </remarks>
         private static void BuildFSharpModule(BuildData buildData, FSharpModule module, BuildOptions moduleOptions)
         {
@@ -50,7 +50,6 @@ namespace Flax.Build
             var projectFilePath = module.ProjectFilePath;
             if (!File.Exists(projectFilePath))
                 throw new Exception($"Missing F# project file {projectFilePath} of module {module.Name}.");
-            var project = FSharpProjectFile.Load(projectFilePath);
             var graph = buildData.Graph;
             var assemblyPath = GetFSharpAssemblyPath(buildData, module);
             var outputPath = Path.GetDirectoryName(assemblyPath);
@@ -60,33 +59,62 @@ namespace Flax.Build
             var runtimeVersionParts = dotnetSdk.RuntimeVersionName.Split('.');
             var runtimeFramework = $"net{runtimeVersionParts[0]}.{runtimeVersionParts[1]}";
 
-            // References: what the dependencies reference (eg. FSharp.Core and Newtonsoft.Json from the engine), the assemblies of the dependency modules, the NuGet packages and the assemblies from the project file
+            // References the build provides: what the dependencies reference (eg. FSharp.Core and Newtonsoft.Json from the engine, packages of F# dependency modules) and the assemblies of the dependency modules
             var references = new List<string>();
             void AddReference(string path)
             {
                 if (!string.IsNullOrEmpty(path) && !references.Contains(path, StringComparer.OrdinalIgnoreCase))
                     references.Add(path);
             }
-            foreach (var reference in moduleOptions.ScriptingAPI.FileReferences)
+            var inheritedReferences = moduleOptions.ScriptingAPI.FileReferences.ToList();
+            foreach (var reference in inheritedReferences)
                 AddReference(reference);
             var dependencyAssemblies = GetFSharpDependencyAssemblies(buildData, module, moduleOptions).ToList();
-            var nugetPath = Utilities.GetNugetPackagesPath();
-            dependencyAssemblies.AddRange(GetFSharpDependencyNugetPackages(buildData, moduleOptions).Select(x => x.GetLibPath(nugetPath)).Where(x => !string.IsNullOrEmpty(x)));
             foreach (var reference in dependencyAssemblies)
-                AddReference(reference);
-            foreach (var package in project.PackageReferences)
-                AddReference(AddFSharpNugetPackage(buildData, moduleOptions, project, package, runtimeFramework));
-            foreach (var reference in project.References)
                 AddReference(reference);
             if (!references.Any(IsFSharpCore))
             {
                 // FSharp.Core ships with the engine (see EngineModule), fall back to the SDK one for an engine without it
                 AddReference(Path.Combine(dotnetSdk.RootPath, "sdk", dotnetSdk.VersionName, "FSharp", "FSharp.Core.dll"));
             }
+            var defines = GetFSharpDefines(buildData, moduleOptions);
+            var engineAssembly = dependencyAssemblies.FirstOrDefault(IsEngineAssembly);
 
-            // Deploy referenced assemblies next to the module assembly, the same way as for C# modules (see BuildDotNet); NuGet packages are deployed with the target
-            foreach (var reference in moduleOptions.ScriptingAPI.FileReferences.Concat(project.References).Concat(references.Where(IsFSharpCore)))
+            // The project file items for this configuration: its source files in compile order, and the packages and assemblies it references
+            var buildPropsPath = Path.Combine(moduleOptions.IntermediateFolder, module.Name + ".Build.props");
+            WriteFSharpProps(buildPropsPath, "for this build configuration", runtimeFramework, defines, engineAssembly, null);
+            var project = FSharpProjectFile.Load(projectFilePath, Path.Combine(moduleOptions.IntermediateFolder, "MSBuild"), new Dictionary<string, string>
+            {
+                { "Configuration", buildData.Configuration.ToString() },
+                { "TargetFramework", runtimeFramework },
+                { "FlaxGeneratedProps", buildPropsPath },
+
+                // FSharp.Core comes with the engine
+                { "DisableImplicitFSharpCoreReference", "true" },
+            }, Utilities.GetDotNetPath());
+
+            // The project references, except the ones the build provides: the engine, the dependency modules and FSharp.Core have to be the ones of this build
+            var providedNames = new HashSet<string>(references.Select(Path.GetFileNameWithoutExtension), StringComparer.OrdinalIgnoreCase) { "FSharp.Core" };
+            var projectReferences = project.References.Where(x => !providedNames.Contains(Path.GetFileNameWithoutExtension(x))).ToList();
+            foreach (var reference in projectReferences)
+                AddReference(reference);
+
+            // The package assemblies (the ones deployable, which reference assemblies are not) are shared with the modules depending on this one, as types from them can appear in its code, the same way packages of C# modules are
+            foreach (var reference in projectReferences)
+            {
+                if (project.CopyLocalFiles.Contains(reference, StringComparer.OrdinalIgnoreCase))
+                    moduleOptions.ScriptingAPI.FileReferences.Add(reference);
+            }
+
+            // Deploy the referenced assemblies next to the module assembly, the same way as for C# modules (see BuildDotNet), and the project runtime files (packages with their dependencies)
+            foreach (var reference in inheritedReferences.Concat(references.Where(IsFSharpCore)))
                 DeployFSharpReference(graph, outputPath, reference);
+            foreach (var file in project.CopyLocalFiles)
+            {
+                var dstFile = Path.Combine(outputPath, Path.GetFileName(file));
+                if (!providedNames.Contains(Path.GetFileNameWithoutExtension(file)) && dstFile != file && !graph.HasCopyTask(dstFile, file))
+                    graph.AddCopyFile(dstFile, file);
+            }
 
             // Compiler arguments. The flag set is what MSBuild's Fsc task passes for an SDK project, plus diagnostics the editor Output Log can link to their source (it needs an absolute path and the line,column,endLine,endColumn span on a single line).
             var optimize = moduleOptions.ScriptingAPI.Optimization ?? buildData.Configuration == TargetConfiguration.Release;
@@ -110,7 +138,6 @@ namespace Flax.Build
             };
 
             // One switch per symbol: fsc accepts "--define:A;B" but defines nothing then
-            var defines = GetFSharpDefines(buildData, moduleOptions);
             foreach (var define in defines)
                 args.Add("--define:" + define);
 
@@ -166,14 +193,22 @@ namespace Flax.Build
                 task.CommandArguments = $"exec \"{fscPath}\" \"@{responseFile}\"";
             }
 
-            // Settings for an IDE opening the project file: the ones of the editor build an IDE session sits next to
+            // Settings for an IDE opening the project file: the ones of the editor build an IDE session sits next to. The IDE resolves the project's own references itself.
             if (IsFSharpIdeConfiguration(buildData.Target, buildData.Configuration, buildData.Platform.Target, buildData.Architecture))
-                WriteFSharpIdeProps(buildData, module, runtimeFramework, defines, dependencyAssemblies);
+            {
+                var ideReferences = references.Where(x => !IsFSharpCore(x) && x != engineAssembly && !projectReferences.Contains(x)).ToList();
+                WriteFSharpProps(GetFSharpIdePropsPath(buildData.Project, module), "from the editor Development build", runtimeFramework, defines, engineAssembly, ideReferences);
+            }
         }
 
         private static bool IsFSharpCore(string path)
         {
             return string.Equals(Path.GetFileName(path), "FSharp.Core.dll", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsEngineAssembly(string path)
+        {
+            return string.Equals(Path.GetFileName(path), "FlaxEngine.CSharp.dll", StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<string> GetFSharpDefines(BuildData buildData, BuildOptions moduleOptions)
@@ -215,57 +250,6 @@ namespace Flax.Build
             }
         }
 
-        /// <summary>
-        /// Gets the NuGet packages of the modules the F# module depends on (directly or not): types from them can appear in the code it uses, which the compiler then needs to resolve.
-        /// </summary>
-        private static HashSet<NugetPackage> GetFSharpDependencyNugetPackages(BuildData buildData, BuildOptions moduleOptions)
-        {
-            var result = new HashSet<NugetPackage>();
-            var visited = new HashSet<Module>();
-            var dependencies = new Stack<string>(moduleOptions.PublicDependencies.Concat(moduleOptions.PrivateDependencies));
-            while (dependencies.Count != 0)
-            {
-                var dependencyModule = buildData.Rules.GetModule(dependencies.Pop());
-                if (dependencyModule == null || !visited.Add(dependencyModule) || !buildData.Modules.TryGetValue(dependencyModule, out var dependencyOptions))
-                    continue;
-                result.AddRange(dependencyOptions.NugetPackageReferences);
-                foreach (var dependencyName in dependencyOptions.PublicDependencies.Concat(dependencyOptions.PrivateDependencies))
-                    dependencies.Push(dependencyName);
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Adds the NuGet package from the F# project file to the module packages (so it is deployed with the target, including its dependencies, like the packages of C# modules) and returns the assembly to reference.
-        /// </summary>
-        private static string AddFSharpNugetPackage(BuildData buildData, BuildOptions moduleOptions, FSharpProjectFile project, FSharpProjectFile.PackageReference package, string runtimeFramework)
-        {
-            // The global packages folder uses lowercase ids and versions
-            var nugetPath = Utilities.GetNugetPackagesPath();
-            var name = package.Name.ToLowerInvariant();
-            var version = package.Version.ToLowerInvariant();
-            var libFolder = Path.Combine(nugetPath, name, version, "lib");
-            if (!Directory.Exists(libFolder))
-            {
-                // Restore it the same way as for C# modules
-                var restorePackage = new NugetPackage(name, version, runtimeFramework);
-                var added = moduleOptions.NugetPackageReferences.Add(restorePackage);
-                RestoreNugetPackages(buildData.Graph, buildData.Target, moduleOptions);
-                if (added)
-                    moduleOptions.NugetPackageReferences.Remove(restorePackage);
-            }
-
-            var framework = Directory.Exists(libFolder) ? FSharpProjectFile.SelectLibFramework(Directory.GetDirectories(libFolder).Select(Path.GetFileName), runtimeFramework) : null;
-            if (framework == null)
-            {
-                Log.Error($"F# project {project.FilePath}: NuGet package {package.Name} {package.Version} has no assemblies for {runtimeFramework} (nuget: {nugetPath})");
-                return null;
-            }
-            var nugetPackage = new NugetPackage(name, version, framework);
-            moduleOptions.NugetPackageReferences.Add(nugetPackage);
-            return nugetPackage.GetLibPath(nugetPath);
-        }
-
         private static void DeployFSharpReference(TaskGraph graph, string outputPath, string srcFile)
         {
             var dstFile = Path.Combine(outputPath, Path.GetFileName(srcFile));
@@ -294,18 +278,20 @@ namespace Flax.Build
         }
 
         /// <summary>
-        /// Gets the settings file for an IDE opening the F# project file: the project imports it (by default from Cache/Intermediate/FSharp/&lt;project name&gt;.Ide.props), as it runs no Flax.Build to pass them.
+        /// Gets the settings file for an IDE opening the F# project file: the project imports it (by default from Cache/Intermediate/FSharp/&lt;project name&gt;.Ide.props), as no Flax.Build runs to pass them.
         /// </summary>
         internal static string GetFSharpIdePropsPath(ProjectInfo project, Module module)
         {
             return Path.Combine(project.ProjectFolderPath, Configuration.IntermediateFolder, "FSharp", Path.GetFileNameWithoutExtension(((FSharpModule)module).ProjectFilePath) + ".Ide.props");
         }
 
-        private static void WriteFSharpIdeProps(BuildData buildData, FSharpModule module, string runtimeFramework, List<string> defines, List<string> dependencyAssemblies)
+        /// <summary>
+        /// Writes the settings the project file imports (as FlaxGeneratedProps): the ones of the build for evaluating it, the ones of the editor build for an IDE.
+        /// </summary>
+        private static void WriteFSharpProps(string path, string origin, string runtimeFramework, List<string> defines, string engineAssembly, List<string> references)
         {
-            var engineAssembly = dependencyAssemblies.FirstOrDefault(x => string.Equals(Path.GetFileName(x), "FlaxEngine.CSharp.dll", StringComparison.OrdinalIgnoreCase));
             var contents = new StringBuilder();
-            contents.AppendLine("<!-- Generated by Flax.Build from the editor Development build. Do not edit. -->");
+            contents.AppendLine($"<!-- Generated by Flax.Build {origin}. Do not edit. -->");
             contents.AppendLine("<Project>");
             contents.AppendLine("  <PropertyGroup>");
             contents.AppendLine($"    <TargetFramework>{runtimeFramework}</TargetFramework>");
@@ -314,22 +300,20 @@ namespace Flax.Build
                 contents.AppendLine($"    <FlaxEngineAssembly>{SecurityElement.Escape(engineAssembly)}</FlaxEngineAssembly>");
             contents.AppendLine("    <OtherFlags>$(OtherFlags) --fullpaths --flaterrors --vserrors</OtherFlags>");
             contents.AppendLine("  </PropertyGroup>");
-            var moduleAssemblies = dependencyAssemblies.Where(x => x != engineAssembly).ToList();
-            if (moduleAssemblies.Count != 0)
+            if (references != null && references.Count != 0)
             {
-                // The assemblies of the modules this one depends on (the project file cannot know Flax modules)
+                // The assemblies the build references besides the project's own ones (eg. the modules this one depends on, which the project file cannot know)
                 contents.AppendLine("  <ItemGroup>");
-                foreach (var assembly in moduleAssemblies)
+                foreach (var reference in references)
                 {
-                    contents.AppendLine($"    <Reference Include=\"{SecurityElement.Escape(Path.GetFileNameWithoutExtension(assembly))}\">");
-                    contents.AppendLine($"      <HintPath>{SecurityElement.Escape(assembly)}</HintPath>");
+                    contents.AppendLine($"    <Reference Include=\"{SecurityElement.Escape(Path.GetFileNameWithoutExtension(reference))}\">");
+                    contents.AppendLine($"      <HintPath>{SecurityElement.Escape(reference)}</HintPath>");
                     contents.AppendLine("      <Private>false</Private>");
                     contents.AppendLine("    </Reference>");
                 }
                 contents.AppendLine("  </ItemGroup>");
             }
             contents.AppendLine("</Project>");
-            var path = GetFSharpIdePropsPath(buildData.Project, module);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             Utilities.WriteFileIfChanged(path, contents.ToString());
         }
