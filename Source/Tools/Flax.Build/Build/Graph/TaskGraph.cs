@@ -80,6 +80,11 @@ namespace Flax.Build.Graph
             task.Cost = 1;
             task.WorkingDirectory = Workspace;
             var outputPath = Path.GetDirectoryName(dstFile);
+
+            // Make the output folder now: xcopy asks whether a missing destination is a file or a folder and waits for
+            // the answer, and a build started by the editor has no console to answer from (cp just fails)
+            Directory.CreateDirectory(outputPath);
+
             if (Platform.BuildPlatform.Target == TargetPlatform.Windows)
             {
                 task.CommandPath = "xcopy";
