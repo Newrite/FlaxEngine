@@ -32,6 +32,7 @@
     <Compile Include="TestFSharpRecord.fs" />
     <Compile Include="TestFSharpUnion.fs" />
     <Compile Include="TestFSharpCollection.fs" />
+    <Compile Include="TestFSharpInterfaces.fs" />
   </ItemGroup>
 
   <ItemGroup>

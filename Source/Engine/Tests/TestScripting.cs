@@ -175,5 +175,17 @@ namespace FlaxEngine
             return str.Length;
         }
     }
+
+    /// <summary>
+    /// Test interface implemented explicitly in C#: the method is private and named after the interface (FlaxEngine.ITestInterface.TestInterfaceMethod), the only way F# implements interfaces.
+    /// </summary>
+    public class TestInterfaceExplicitManaged : TestClassNative, ITestInterface
+    {
+        /// <inheritdoc />
+        int ITestInterface.TestInterfaceMethod(string str)
+        {
+            return str.Length * 10;
+        }
+    }
 }
 #endif

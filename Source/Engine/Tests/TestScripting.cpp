@@ -166,5 +166,18 @@ TEST_CASE("Scripting")
         interfaceObject = ScriptingObject::FromInterface<ITestInterface>(interface);
         CHECK(interfaceObject);
         CHECK(interfaceObject == object);
+
+        // Test managed interface implemented explicitly (a private method named after the interface, the only way F# implements interfaces)
+        type = Scripting::FindScriptingType("FlaxEngine.TestInterfaceExplicitManaged");
+        CHECK(type);
+        object = Scripting::NewObject(type);
+        CHECK(object);
+        interface = ScriptingObject::ToInterface<ITestInterface>(object);
+        CHECK(interface);
+        methodResult = interface->TestInterfaceMethod(TEXT("1234"));
+        CHECK(methodResult == 40);
+        interfaceObject = ScriptingObject::FromInterface<ITestInterface>(interface);
+        CHECK(interfaceObject);
+        CHECK(interfaceObject == object);
     }
 }

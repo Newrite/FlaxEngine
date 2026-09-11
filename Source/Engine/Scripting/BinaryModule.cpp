@@ -833,6 +833,40 @@ namespace
                 return method;
             }
         }
+
+        // Explicit interface implementation: a private method named after the interface (eg. FlaxEngine.IFoo.Bar), optional in C# and the only way F# implements interfaces.
+        // The reference method belongs to the interface or to the native class implementing it (interface vtables are set up from the native type's class).
+        const MClass* referenceClass = referenceMethod->GetParentClass();
+        if (!referenceClass)
+            return nullptr;
+        // GetInterfaces skips interfaces a base class implements too, which a class re-implementing one (eg. explicitly, over a native base implementing it) does, so walk the base classes as well
+        const StringAnsiView methodName = referenceMethod->GetName();
+        const StringAnsiView rootClassName("System.Object");
+        for (const MClass* klass = mclass; klass; klass = klass->GetFullName() == rootClassName ? nullptr : klass->GetBaseClass()) // Asking the root class for its base throws
+        {
+            for (const MClass* interfaceClass : klass->GetInterfaces())
+            {
+                if (interfaceClass != referenceClass && !referenceClass->HasInterface(interfaceClass))
+                    continue;
+                const StringAnsiView interfaceName = interfaceClass->GetFullName();
+                for (int32 i = 0; i < methods.Count(); i++)
+                {
+                    MMethod* method = methods[i];
+                    const StringAnsiView name = method->GetName();
+                    if (!method->IsStatic() &&
+                        name.Length() == interfaceName.Length() + 1 + methodName.Length() &&
+                        name[interfaceName.Length()] == '.' &&
+                        name.StartsWith(interfaceName, StringSearchCase::CaseSensitive) &&
+                        name.EndsWith(methodName, StringSearchCase::CaseSensitive) &&
+                        method->GetParametersCount() == referenceMethod->GetParametersCount() &&
+                        method->GetReturnType() == referenceMethod->GetReturnType()
+                    )
+                    {
+                        return method;
+                    }
+                }
+            }
+        }
         return nullptr;
     }
 }
