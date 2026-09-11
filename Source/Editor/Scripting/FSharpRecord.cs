@@ -1,6 +1,7 @@
 // Copyright (c) Wojciech Figat. All rights reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
@@ -72,6 +73,61 @@ namespace FlaxEditor.Scripting
                        .OrderBy(x => x.Order)
                        .Select(x => x.Property)
                        .ToArray();
+        }
+
+        /// <summary>
+        /// Creates an F# record with default field values: empty strings, arrays and F# lists/maps/sets, zero for value types, <c>None</c> for options and default records for nested records - values F# code can use, not nulls.
+        /// </summary>
+        /// <param name="type">The record type.</param>
+        /// <returns>The new record.</returns>
+        public static object CreateDefault(Type type)
+        {
+            return CreateDefault(type, new HashSet<Type>());
+        }
+
+        private static object CreateDefault(Type type, HashSet<Type> creating)
+        {
+            var fields = GetFields(type);
+            var constructor = type.GetConstructor(fields.Select(x => x.PropertyType).ToArray());
+            if (constructor == null)
+                throw new InvalidOperationException($"F# record '{type}' has no constructor taking all of its fields.");
+            creating.Add(type);
+            try
+            {
+                return constructor.Invoke(fields.Select(x => GetDefaultValue(x.PropertyType, creating)).ToArray());
+            }
+            finally
+            {
+                creating.Remove(type);
+            }
+        }
+
+        private static object GetDefaultValue(Type type, HashSet<Type> creating)
+        {
+            if (type == typeof(string))
+                return string.Empty;
+            if (type.IsArray)
+                return Array.CreateInstance(type.GetElementType(), 0);
+            if (type.IsValueType)
+                return Activator.CreateInstance(type);
+            if (IsRecord(type) && !creating.Contains(type))
+                return CreateDefault(type, creating);
+
+            // F# list exposes its empty value as a static Empty property
+            var empty = type.GetProperty("Empty", BindingFlags.Public | BindingFlags.Static);
+            if (empty != null && type.IsAssignableFrom(empty.PropertyType))
+                return empty.GetValue(null);
+
+            // F# Map and Set have no such property but are constructed from a sequence of their elements
+            foreach (var constructor in type.GetConstructors())
+            {
+                var parameters = constructor.GetParameters();
+                if (parameters.Length == 1 && parameters[0].ParameterType.IsGenericType && parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    return constructor.Invoke(new object[] { Array.CreateInstance(parameters[0].ParameterType.GetGenericArguments()[0], 0) });
+            }
+
+            // Options (None is null), classes, and records that contain themselves
+            return null;
         }
 
         /// <summary>

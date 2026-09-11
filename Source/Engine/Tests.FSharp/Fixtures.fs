@@ -31,6 +31,17 @@ type Ordered = { Zeta: int; Alpha: string }
 /// A record holding another record.
 type Outer = { Inner: PlainRecord; Tag: string }
 
+/// A record with one field of each kind, to test creating a record with default values.
+type Defaults =
+    { Text: string
+      Number: int
+      Items: int list
+      Table: Map<string, int>
+      Tags: Set<string>
+      Maybe: string option
+      Values: float32[]
+      Inner: PlainRecord }
+
 /// A record marked [<CLIMutable>]: gains a parameterless constructor and settable properties.
 [<CLIMutable>]
 type MutableRecord = { Name: string; Amount: int }

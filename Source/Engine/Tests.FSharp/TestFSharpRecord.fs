@@ -47,6 +47,21 @@ type TestFSharpRecord() =
 
         Assert.AreEqual(box { Inner = { Name = "pear"; Amount = 2 }; Tag = "fruit" }, box updated)
 
+    /// Test creating a record with default values (what the inspector's "+" does for an unset record member):
+    /// usable F# values, not nulls that break F# code - empty collections, None, zero, "", and nested records.
+    [<Test>]
+    member _.TestCreateDefault() =
+        let created = FSharpRecord.CreateDefault(typeof<Defaults>) :?> Defaults
+
+        Assert.AreEqual("", created.Text)
+        Assert.AreEqual(0, created.Number)
+        Assert.AreEqual(box ([]: int list), box created.Items)
+        Assert.AreEqual(box (Map.empty: Map<string, int>), box created.Table)
+        Assert.AreEqual(box (Set.empty: Set<string>), box created.Tags)
+        Assert.AreEqual(box (None: string option), box created.Maybe)
+        CollectionAssert.IsEmpty(created.Values)
+        Assert.AreEqual(box { PlainRecord.Name = ""; Amount = 0 }, box created.Inner)
+
     /// Test that an unknown field name is an error rather than a silent no-op.
     [<Test>]
     member _.TestWithUnknownField() =

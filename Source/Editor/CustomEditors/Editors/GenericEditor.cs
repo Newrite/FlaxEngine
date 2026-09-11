@@ -708,6 +708,13 @@ namespace FlaxEditor.CustomEditors.Editors
             EvaluateVisibleIf(itemLayout, item, labelIndex);
         }
 
+        private static object CreateInstance(ScriptType type)
+        {
+            if (FSharpRecord.IsRecord(type.Type))
+                return FSharpRecord.CreateDefault(type.Type);
+            return type.CreateInstance();
+        }
+
         /// <inheritdoc />
         internal override void Initialize(CustomEditorPresenter presenter, LayoutElementsContainer layout, ValueContainer values)
         {
@@ -738,8 +745,9 @@ namespace FlaxEditor.CustomEditors.Editors
                             // Show picker with all types that implement specific class/interface but are not abstract
                             types = Editor.Instance.CodeEditing.All.Get().Where(x => !x.IsAbstract && x.CanCreateInstance && type.IsAssignableFrom(x)).ToArray();
                         }
-                        else if (type.CanCreateInstance)
+                        else if (type.CanCreateInstance || FSharpRecord.IsRecord(type.Type))
                         {
+                            // F# records have no parameterless constructor but can be created with default field values
                             types = [type];
                         }
 
@@ -760,12 +768,12 @@ namespace FlaxEditor.CustomEditors.Editors
                             if (types.Length == 1)
                             {
                                 // Single type
-                                button.Clicked += () => SetValue(types[0].CreateInstance());
+                                button.Clicked += () => SetValue(CreateInstance(types[0]));
                             }
                             else
                             {
                                 // Picker
-                                button.Clicked += () => FlaxEditor.GUI.TypeSearchPopup.Show(button, new Float2(0, button.Height), types, scriptType => { SetValue(scriptType.CreateInstance()); });
+                                button.Clicked += () => FlaxEditor.GUI.TypeSearchPopup.Show(button, new Float2(0, button.Height), types, scriptType => { SetValue(CreateInstance(scriptType)); });
                             }
                         }
                     }

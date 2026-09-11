@@ -294,7 +294,8 @@ namespace FlaxEditor.CustomEditors.Dedicated
                 var fsharpProxy = Editor.Instance.ContentDatabase.Proxy.OfType<FSharpScriptProxy>().FirstOrDefault();
                 if (project == null || fsharpProxy == null)
                     return;
-                fsharpProxy.Create(Path.Combine(Path.GetDirectoryName(project), item.ScriptName + ".fs"), null);
+                // Normalized like Content window paths: the proxy derives the namespace from the path relative to the Source folder
+                fsharpProxy.Create(StringUtils.NormalizePath(Path.Combine(Path.GetDirectoryName(project), item.ScriptName + ".fs")), null);
                 return;
             }
             var paths = Directory.GetFiles(Globals.ProjectSourceFolder, "*.Build.cs");
