@@ -139,6 +139,10 @@ namespace FlaxEditor.CustomEditors
             if (FSharpUnion.IsEditableUnion(targetTypeType))
                 return new FSharpUnionEditor();
 
+            // Immutable F# collections (list, Map, Set) come from FSharp.Core, which is not a scripting assembly an editor can be registered for
+            if (FSharpCollection.IsCollection(targetTypeType))
+                return new FSharpCollectionEditor();
+
             // The most generic editor
             return new GenericEditor();
         }

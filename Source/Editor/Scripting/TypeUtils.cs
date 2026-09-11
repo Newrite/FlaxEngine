@@ -100,6 +100,11 @@ namespace FlaxEngine.Utilities
                 return ChannelMask.Red;
             if (type.Type == typeof(MaterialSceneTextures))
                 return MaterialSceneTextures.BaseColor;
+            if (type.Type != null && (FSharpRecord.IsRecord(type.Type) || FSharpUnion.IsEditableUnion(type.Type) || FSharpCollection.IsCollection(type.Type)))
+            {
+                // F# records, unions and collections have no parameterless constructor, but have usable default values
+                return FSharpRecord.GetDefaultValue(type.Type, new HashSet<Type>());
+            }
             if (type.IsValueType)
             {
                 var value = type.CreateInstance();
