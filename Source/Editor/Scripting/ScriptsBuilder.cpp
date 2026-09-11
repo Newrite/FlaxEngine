@@ -282,7 +282,11 @@ bool ScriptsBuilder::GenerateProject(const StringView& customArgs)
 
 void ScriptsBuilderImpl::GetClassName(const StringAnsiView fullname, StringAnsi& className)
 {
-    const auto lastDotIndex = fullname.FindLast('.');
+    // Strip the namespace and any declaring types: nested types are named 'Outer+Inner', and an F# module
+    // is a static class, so every type declared in a module is nested ('Namespace.Module+Type')
+    const int32 lastDot = fullname.FindLast('.');
+    const int32 lastPlus = fullname.FindLast('+');
+    const int32 lastDotIndex = lastDot > lastPlus ? lastDot : lastPlus;
     if (lastDotIndex != -1)
     {
         //namespaceName = fullname.Substring(0, lastDotIndex);
