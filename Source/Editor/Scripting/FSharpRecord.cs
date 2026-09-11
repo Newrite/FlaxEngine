@@ -78,12 +78,17 @@ namespace FlaxEditor.Scripting
             }
         }
 
-        private static object GetDefaultValue(Type type, HashSet<Type> creating)
+        /// <summary>
+        /// Gets a usable default value of an F# field type. Shared by records and unions; <paramref name="creating"/> stops recursive types.
+        /// </summary>
+        internal static object GetDefaultValue(Type type, HashSet<Type> creating)
         {
             if (type == typeof(string))
                 return string.Empty;
             if (type.IsArray)
                 return Array.CreateInstance(type.GetElementType(), 0);
+            if (FSharpUnion.IsEditableUnion(type))
+                return FSharpUnion.CreateDefault(type, creating);
             if (type.IsValueType)
                 return Activator.CreateInstance(type);
             if (IsRecord(type) && !creating.Contains(type))

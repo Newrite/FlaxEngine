@@ -30,6 +30,7 @@
     <Compile Include="Fixtures.fs" />
     <Compile Include="TestSerialization.fs" />
     <Compile Include="TestFSharpRecord.fs" />
+    <Compile Include="TestFSharpUnion.fs" />
   </ItemGroup>
 
   <ItemGroup>

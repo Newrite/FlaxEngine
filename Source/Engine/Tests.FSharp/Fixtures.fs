@@ -51,6 +51,9 @@ type Shape =
     | Circle of radius: float32
     | Rect of width: float32 * height: float32
 
+/// A record holding a union and an option.
+type Tagged = { Kind: Shape; Label: string option }
+
 type WithUnion() =
     member val Shape = Circle 1.0f with get, set
 

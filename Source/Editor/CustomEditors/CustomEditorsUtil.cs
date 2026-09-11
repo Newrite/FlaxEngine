@@ -135,6 +135,10 @@ namespace FlaxEditor.CustomEditors
             if (typeof(FlaxEngine.Object).IsAssignableFrom(targetTypeType))
                 return new ScriptingObjectEditor();
 
+            // F# discriminated unions (option and Result included) have no common base type to register an editor for
+            if (FSharpUnion.IsEditableUnion(targetTypeType))
+                return new FSharpUnionEditor();
+
             // The most generic editor
             return new GenericEditor();
         }
