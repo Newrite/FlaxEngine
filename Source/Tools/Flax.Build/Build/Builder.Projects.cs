@@ -424,6 +424,15 @@ namespace Flax.Build
                                 continue;
                             }
 
+                            // F# modules come with their own project file
+                            var fsharpModule = binaryModule.Value.OfType<FSharpModule>().FirstOrDefault();
+                            if (fsharpModule != null)
+                            {
+                                if (dotNetProjectGenerator is Projects.VisualStudio.VisualStudioProjectGenerator)
+                                    projects.Add(CreateFSharpProject(fsharpModule, dotNetProjectGenerator, mainProject, targets));
+                                continue;
+                            }
+
                             using (new ProfileEventScope(binaryModuleName))
                             {
                                 // TODO: add support for extending this code and support generating bindings projects for other scripting languages
@@ -528,6 +537,14 @@ namespace Flax.Build
                             foreach (var dependencyName in moduleBuildOptions.PublicDependencies.Concat(moduleBuildOptions.PrivateDependencies))
                             {
                                 var dependencyModule = rules.GetModule(dependencyName);
+                                if (dependencyModule is FSharpModule && dependencyModule.BinaryModuleName != binaryModule.Key)
+                                {
+                                    // Reference the F# module assembly rather than its project, which the IDE does not build
+                                    var fsharpAssembly = GetFSharpIdeAssemblyPath(project, dependencyModule);
+                                    if (fsharpAssembly != null)
+                                        project.CSharp.FileReferences.Add(fsharpAssembly);
+                                    continue;
+                                }
                                 if (dependencyModule != null &&
                                     !string.IsNullOrEmpty(dependencyModule.BinaryModuleName) &&
                                     dependencyModule.BinaryModuleName != binaryModule.Key)

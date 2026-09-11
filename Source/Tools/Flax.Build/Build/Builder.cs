@@ -497,6 +497,25 @@ namespace Flax.Build
             Utilities.Run(Utilities.GetDotNetPath(), $"restore \"{csprojPath}\"", null, null, Utilities.RunOptions.DefaultTool);
         }
 
+        private static bool IsNugetFramework(string nuspecFramework, string framework)
+        {
+            if (string.IsNullOrEmpty(nuspecFramework))
+                return false;
+            if (string.Equals(nuspecFramework, framework, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Nuspec files can use the full framework names (eg. .NETStandard2.0 for netstandard2.0, .NETCoreApp5.0 for net5.0)
+            if (nuspecFramework.StartsWith(".NETStandard", StringComparison.OrdinalIgnoreCase))
+                return string.Equals("netstandard" + nuspecFramework.Substring(12), framework, StringComparison.OrdinalIgnoreCase);
+            if (nuspecFramework.StartsWith(".NETCoreApp", StringComparison.OrdinalIgnoreCase))
+            {
+                var version = nuspecFramework.Substring(11);
+                return string.Equals("netcoreapp" + version, framework, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals("net" + version, framework, StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+
         private static void DeployNuGetPackage(string nugetPath, BuildOptions targetBuildOptions, HashSet<string> nugetFiles, NugetPackage package, string folder = null)
         {
             // Deploy library
@@ -522,7 +541,7 @@ namespace Flax.Build
                 var root = (System.Xml.Linq.XElement)doc.FirstNode;
                 var metadataNode = root.Descendants().First(x => x.Name.LocalName== "metadata");
                 var dependenciesNode = metadataNode.Descendants().First(x => x.Name.LocalName == "dependencies");
-                var groupNode = dependenciesNode.Descendants().FirstOrDefault(x => x.Attribute("targetFramework")?.Value == package.Framework);
+                var groupNode = dependenciesNode.Descendants().FirstOrDefault(x => IsNugetFramework(x.Attribute("targetFramework")?.Value, package.Framework));
                 if (groupNode == null)
                 {
                     Log.Warning($"Cannot find framework {package.Framework} inside NuGet package {package.Name}, {package.Version}");

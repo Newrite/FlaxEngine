@@ -408,6 +408,16 @@ namespace Flax.Build
                         foreach (var dependencyName in moduleBuildOptions.PublicDependencies.Concat(moduleBuildOptions.PrivateDependencies))
                         {
                             var dependencyModule = buildData.Rules.GetModule(dependencyName);
+                            if (dependencyModule is FSharpModule && dependencyModule.BinaryModuleName != binaryModuleName && buildData.Modules.ContainsKey(dependencyModule))
+                            {
+                                // Reference F# module assembly (built by this target or by a referenced one)
+                                if (buildData.BinaryModules.Any(x => x.Key == dependencyModule.BinaryModuleName))
+                                    fileReferences.Add(GetFSharpAssemblyPath(buildData, dependencyModule));
+                                var referencedFSharpBuild = buildData.FinReferenceBuildModule(dependencyModule.BinaryModuleName);
+                                if (referencedFSharpBuild != null && !string.IsNullOrEmpty(referencedFSharpBuild.ManagedPath))
+                                    fileReferences.Add(referencedFSharpBuild.ManagedPath);
+                                continue;
+                            }
                             if (dependencyModule != null &&
                                 !string.IsNullOrEmpty(dependencyModule.BinaryModuleName) &&
                                 dependencyModule.BuildCSharp &&

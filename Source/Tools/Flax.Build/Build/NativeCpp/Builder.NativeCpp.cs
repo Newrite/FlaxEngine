@@ -148,7 +148,7 @@ namespace Flax.Build
             /// Moves the external binary modules (the last <paramref name="count"/> entries) to the front, keeping the order within both groups.
             /// </summary>
             /// <remarks>
-            /// The engine loads binary modules in this order. External modules are libraries the target modules reference (eg. an F# assembly used by C# game scripts), so they must be loaded first: otherwise code in a target module that touches their types before they are loaded makes the scripting load context resolve them from the output folder by path, which locks the file, and the next hot-reload build fails to copy the rebuilt assembly over it.
+            /// The engine loads binary modules in this order. External modules are libraries the target modules reference (eg. a prebuilt assembly used by the game scripts), so they must be loaded first: otherwise code in a target module that touches their types before they are loaded makes the scripting load context resolve them from the output folder by path, which locks the file, and the next hot-reload build fails to copy the rebuilt assembly over it.
             /// </remarks>
             internal void MoveExternalBinaryModulesFirst(int count)
             {
@@ -486,6 +486,13 @@ namespace Flax.Build
                 module.SetupEnvironment(moduleOptions);
                 moduleOptions.MergeSourcePathsIntoSourceFiles();
 
+                // Build F# modules from their project file
+                if (module is FSharpModule fsharpModule)
+                {
+                    BuildFSharpModule(buildData, fsharpModule, moduleOptions);
+                    return;
+                }
+
                 // Skip build for C#-only modules
                 if (!module.BuildNativeCode)
                     return;
@@ -619,6 +626,13 @@ namespace Flax.Build
                 // Setup actual build environment
                 module.SetupEnvironment(moduleOptions);
                 moduleOptions.MergeSourcePathsIntoSourceFiles();
+
+                // Build F# modules from their project file
+                if (module is FSharpModule fsharpModule)
+                {
+                    BuildFSharpModule(buildData, fsharpModule, moduleOptions);
+                    return;
+                }
 
                 // Skip build for C#-only modules
                 if (!module.BuildNativeCode)
@@ -1058,6 +1072,11 @@ namespace Flax.Build
                     }
                     default: throw new ArgumentOutOfRangeException();
                     }
+                    if (EngineConfiguration.WithCSharp(targetBuildOptions) && TryGetFSharpBinaryModulePath(buildData, binaryModule, out var fsharpAssemblyPath))
+                    {
+                        // F# module assembly
+                        binaryModuleInfo.ManagedPath = fsharpAssemblyPath;
+                    }
 
                     binaryModuleInfo.NativePathProcessed = BuildTargetInfo.ProcessPath(binaryModuleInfo.NativePath, project.ProjectFolderPath);
                     binaryModuleInfo.ManagedPathProcessed = BuildTargetInfo.ProcessPath(binaryModuleInfo.ManagedPath, project.ProjectFolderPath);
@@ -1252,6 +1271,11 @@ namespace Flax.Build
                         Name = binaryModule.Key,
                         ManagedPath = EngineConfiguration.WithCSharp(targetBuildOptions) ? Path.Combine(outputPath, binaryModule.Key + ".CSharp.dll") : string.Empty,
                     };
+                    if (EngineConfiguration.WithCSharp(targetBuildOptions) && TryGetFSharpBinaryModulePath(buildData, binaryModule, out var fsharpAssemblyPath))
+                    {
+                        // F# module assembly
+                        binaryModuleInfo.ManagedPath = fsharpAssemblyPath;
+                    }
 
                     binaryModuleInfo.NativePathProcessed = string.Empty;
                     binaryModuleInfo.ManagedPathProcessed = BuildTargetInfo.ProcessPath(binaryModuleInfo.ManagedPath, project.ProjectFolderPath);
