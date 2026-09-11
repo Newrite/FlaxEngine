@@ -144,6 +144,22 @@ namespace Flax.Build
                 }
             }
 
+            /// <summary>
+            /// Moves the external binary modules (the last <paramref name="count"/> entries) to the front, keeping the order within both groups.
+            /// </summary>
+            /// <remarks>
+            /// The engine loads binary modules in this order. External modules are libraries the target modules reference (eg. an F# assembly used by C# game scripts), so they must be loaded first: otherwise code in a target module that touches their types before they are loaded makes the scripting load context resolve them from the output folder by path, which locks the file, and the next hot-reload build fails to copy the rebuilt assembly over it.
+            /// </remarks>
+            internal void MoveExternalBinaryModulesFirst(int count)
+            {
+                if (count <= 0 || count >= BinaryModules.Length)
+                    return;
+                var reordered = new BuildTargetBinaryModuleInfo[BinaryModules.Length];
+                Array.Copy(BinaryModules, BinaryModules.Length - count, reordered, 0, count);
+                Array.Copy(BinaryModules, 0, reordered, count, BinaryModules.Length - count);
+                BinaryModules = reordered;
+            }
+
             internal void AddReferencedBuilds(ref int i, string projectPath, Dictionary<ProjectInfo, BuildData> referencedBuilds)
             {
                 foreach (var referenceBuild in referencedBuilds)
@@ -1050,6 +1066,7 @@ namespace Flax.Build
                 }
 
                 buildData.BuildInfo.AddExternalBinaryModules(ref i, project.ProjectFolderPath, targetBuildOptions.ExternalModules);
+                buildData.BuildInfo.MoveExternalBinaryModulesFirst(targetBuildOptions.ExternalModules.Count);
                 i = 0;
                 buildData.BuildInfo.AddReferencedBuilds(ref i, project.ProjectFolderPath, buildData.ReferenceBuilds);
 
@@ -1243,6 +1260,7 @@ namespace Flax.Build
                 }
 
                 buildData.BuildInfo.AddExternalBinaryModules(ref i, project.ProjectFolderPath, targetBuildOptions.ExternalModules);
+                buildData.BuildInfo.MoveExternalBinaryModulesFirst(targetBuildOptions.ExternalModules.Count);
                 i = 0;
                 buildData.BuildInfo.AddReferencedBuilds(ref i, project.ProjectFolderPath, buildData.ReferenceBuilds);
 
