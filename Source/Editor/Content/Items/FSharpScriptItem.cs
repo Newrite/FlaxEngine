@@ -23,8 +23,25 @@ namespace FlaxEditor.Content
         /// <inheritdoc />
         public override string TypeDescription => "F# Source Code";
 
+        private static SpriteHandle _thumbnail;
+        private static bool _thumbnailLoaded;
+
         /// <inheritdoc />
-        public override SpriteHandle DefaultThumbnail => Editor.Instance.Icons.Document128;
+        public override SpriteHandle DefaultThumbnail
+        {
+            get
+            {
+                // The F# script icon, in the style of the C# and C++ ones of the editor icons atlas, comes from its own small atlas next to the F# templates
+                if (!_thumbnailLoaded)
+                {
+                    _thumbnailLoaded = true;
+                    var atlas = FlaxEngine.Content.LoadAsync<SpriteAtlas>(StringUtils.CombinePaths(Globals.EngineContentFolder, "Editor/Scripting/FSharpIcons.flax"));
+                    if (atlas != null && !atlas.WaitForLoaded())
+                        _thumbnail = atlas.FindSprite("FSharpScript128");
+                }
+                return _thumbnail.IsValid ? _thumbnail : Editor.Instance.Icons.Document128;
+            }
+        }
 
         /// <inheritdoc />
         internal override void UpdatePath(string value)
