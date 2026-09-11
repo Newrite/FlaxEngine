@@ -121,6 +121,7 @@ namespace Flax.Build
             var args = new List<string>
             {
                 "-o:" + assemblyPath,
+                "--nologo", // As /nologo for C#: otherwise the compiler banner lands in the build log on every compile fsc runs
                 "--target:library",
                 "--debug:portable",
                 "--doc:" + Path.ChangeExtension(assemblyPath, ".xml"),

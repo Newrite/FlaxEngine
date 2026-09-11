@@ -7,6 +7,10 @@
 /// The client is what the build invokes. It never fails the build because of the host: any
 /// problem connecting, starting, or talking to it falls through to a plain fsc process, which is
 /// exactly what the build did before this existed.
+///
+/// Output channels matter: Flax.Build logs every line a task writes to stderr as an error, and
+/// stdout as information. So only errors go to stderr; the fallback notice and the verbose trace
+/// (FLAX_FSHARP_HOST_VERBOSE=1) go to stdout.
 module FlaxFSharpCompiler.Program
 
 open System
@@ -25,6 +29,10 @@ let [<Literal>] ProtocolVersion = "1"
 /// The host exits on its own after this long without work, so a forgotten process does not sit on
 /// ~400 MB indefinitely.
 let IdleTimeout = TimeSpan.FromMinutes 30.0
+
+/// The host log is shared by every host a user starts and gains a couple of lines per compile; a
+/// host starting with a log larger than this starts a new one, keeping the previous as .old.log.
+let [<Literal>] MaxLogSize = 1048576L
 
 let [<Literal>] ExitOk = 0
 let [<Literal>] ExitCompileFailed = 1
@@ -119,18 +127,20 @@ let compile (checker: FSharpChecker) (responseFile: string) =
 //   <work>/<id>.res      last line is "EXIT <code>"; everything before it is diagnostics
 // ---------------------------------------------------------------------------------------------
 
+/// The user part of the work directory name.
+let userStamp () =
+    // Must be reproducible across processes so a later client finds the running host's directory.
+    // String.GetHashCode cannot be used: .NET Core randomises it per process, which had the
+    // client looking in one place while the host it had just started served another.
+    use sha = System.Security.Cryptography.SHA256.Create()
+    let bytes = sha.ComputeHash(Text.Encoding.UTF8.GetBytes Environment.UserName)
+    Convert.ToHexString(bytes).Substring(0, 8).ToLowerInvariant()
+
 let workDirFor (hostPath: string) =
     let stamp =
         try File.GetLastWriteTimeUtc(hostPath).Ticks.ToString("x")
         with _ -> "0"
-    // Must be reproducible across processes so a later client finds the running host's directory.
-    // String.GetHashCode cannot be used: .NET Core randomises it per process, which had the
-    // client looking in one place while the host it had just started served another.
-    let user =
-        use sha = System.Security.Cryptography.SHA256.Create()
-        let bytes = sha.ComputeHash(Text.Encoding.UTF8.GetBytes Environment.UserName)
-        Convert.ToHexString(bytes).Substring(0, 8).ToLowerInvariant()
-    Path.Combine(Path.GetTempPath(), sprintf "FlaxFSharpCompiler.%s.%s.%s" ProtocolVersion stamp user)
+    Path.Combine(Path.GetTempPath(), sprintf "FlaxFSharpCompiler.%s.%s.%s" ProtocolVersion stamp (userStamp ()))
 
 /// Touched by the host on every poll. Its freshness is how a client knows a host is alive without
 /// process handles or platform-specific lookups.
@@ -145,6 +155,22 @@ let hostIsAlive (workDir: string) =
 // ---------------------------------------------------------------------------------------------
 // Host
 // ---------------------------------------------------------------------------------------------
+
+/// Removes the work directories of this user that no live host uses.
+///
+/// The work directory name carries the executable's timestamp, so every rebuild of the tool (and
+/// every protocol version) gets a new one and nothing else removes the old ones. A live host - of
+/// another engine checkout, say - keeps its heartbeat fresh and is left alone.
+let removeStaleWorkDirs (workDir: string) (log: string -> unit) =
+    try
+        let own = Path.GetFullPath workDir
+        for dir in Directory.GetDirectories(Path.GetTempPath(), sprintf "FlaxFSharpCompiler.*.%s" (userStamp ())) do
+            if not (String.Equals(Path.GetFullPath dir, own, StringComparison.OrdinalIgnoreCase)) && not (hostIsAlive dir) then
+                try
+                    Directory.Delete(dir, true)
+                    log (sprintf "removed stale work dir %s" dir)
+                with _ -> ()
+    with _ -> ()
 
 let runServer (workDir: string) =
     Directory.CreateDirectory workDir |> ignore
@@ -165,6 +191,12 @@ let runServer (workDir: string) =
     let log (msg: string) =
         try Console.Out.WriteLine(sprintf "[%O] %s" DateTime.Now msg) with _ -> ()
     try
+        // Start over once the log has grown large, keeping the previous one
+        let info = FileInfo logPath
+        if info.Exists && info.Length > MaxLogSize then
+            File.Move(logPath, Path.ChangeExtension(logPath, ".old.log"), true)
+    with _ -> ()
+    try
         let logStream = new StreamWriter(logPath, append = true)
         logStream.AutoFlush <- true
         Console.SetOut logStream
@@ -172,6 +204,7 @@ let runServer (workDir: string) =
     with _ -> ()
 
     log (sprintf "host starting, work=%s" workDir)
+    removeStaleWorkDirs workDir log
 
     let checker = FSharpChecker.Create()
     log "checker ready"
@@ -299,7 +332,7 @@ let tryCompileViaHost (workDir: string) (responseFile: string) (timeout: TimeSpa
         result
     with ex ->
         if Environment.GetEnvironmentVariable "FLAX_FSHARP_HOST_VERBOSE" = "1" then
-            eprintfn "FlaxFSharpCompiler: host request failed: %s: %s" (ex.GetType().Name) ex.Message
+            printfn "FlaxFSharpCompiler: host request failed: %s: %s" (ex.GetType().Name) ex.Message
         None
 
 /// Last resort: run the build exactly as it ran before this tool existed.
@@ -314,7 +347,8 @@ let fallbackToFsc (fscPath: string) (responseFile: string) =
             eprintfn "error FS0000: F# compiler host unavailable and no usable fsc path was supplied"
             ExitProtocolError
         else
-            eprintfn "FlaxFSharpCompiler: host unavailable, falling back to fsc"
+            // A slower build, not a failed one: information, so stdout (see the module comment)
+            printfn "FlaxFSharpCompiler: host unavailable, falling back to fsc"
             let dotnet =
                 let d = Environment.GetEnvironmentVariable "DOTNET_HOST_PATH"
                 if String.IsNullOrEmpty d then "dotnet" else d
@@ -339,7 +373,7 @@ let runClient (responseFile: string) (fscPath: string) =
     else
 
     let verbose = Environment.GetEnvironmentVariable "FLAX_FSHARP_HOST_VERBOSE" = "1"
-    let trace (msg: string) = if verbose then eprintfn "FlaxFSharpCompiler: %s" msg
+    let trace (msg: string) = if verbose then printfn "FlaxFSharpCompiler: %s" msg
 
     let hostPath = Environment.ProcessPath
     let workDir = workDirFor hostPath
