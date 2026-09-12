@@ -88,6 +88,20 @@ namespace FlaxEditor.Content.Import
 
             // Copy file
             File.Copy(SourceUrl, ResultUrl, true);
+
+            // A C# file is compiled because it sits in a module folder, an F# one only if its project
+            // lists it: a file dropped onto the Content window or pasted from outside lands here
+            if (ResultUrl.EndsWith(".fs") || ResultUrl.EndsWith(".fsi"))
+            {
+                try
+                {
+                    FSharpProjectFile.AddToProject(ResultUrl);
+                }
+                catch (System.Exception ex)
+                {
+                    Editor.LogWarning(ex);
+                }
+            }
             return false;
         }
 

@@ -682,6 +682,20 @@ namespace FlaxEditor.Modules
                             Editor.LogError(string.Format("Cannot copy asset \'{0}\' to \'{1}\'", sourcePath, targetPath));
                             return;
                         }
+
+                        // A C# copy is compiled because it is in the module folder, an F# one only if
+                        // the project lists it (Duplicate and Paste both land here)
+                        if (item is FSharpScriptItem)
+                        {
+                            try
+                            {
+                                FSharpProjectFile.AddToProject(targetPath);
+                            }
+                            catch (Exception ex)
+                            {
+                                Editor.LogWarning(ex);
+                            }
+                        }
                     }
                 }
             }
