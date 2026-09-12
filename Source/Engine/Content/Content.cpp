@@ -1147,15 +1147,60 @@ Asset* Content::CreateVirtualAsset(const MClass* type)
     return nullptr;
 }
 
+Asset* Content::CreateVirtualAsset(const Guid& id, const MClass* type)
+{
+    CHECK_RETURN(type, nullptr);
+    const auto scriptingType = Scripting::FindScriptingType(type->GetFullName());
+    if (scriptingType)
+        return CreateVirtualAsset(id, scriptingType);
+    LOG(Error, "Failed to find asset type '{0}'.", String(type->GetFullName()));
+    return nullptr;
+}
+
 Asset* Content::CreateVirtualAsset(const ScriptingTypeHandle& type)
+{
+    return CreateVirtualAsset(Guid::New(), type);
+}
+
+Asset* Content::CreateVirtualAsset(const Guid& id, const ScriptingTypeHandle& type)
 {
     PROFILE_CPU();
     PROFILE_MEM(Content);
     auto& assetType = type.GetType();
 
+    // Refuse an id that is already spoken for rather than taking it from its owner. Three places can
+    // hold one: the loaded assets table, the objects registry (which also holds actors and scripts,
+    // and only logs when a duplicate is registered over it), and the content registry, where the id
+    // belongs to a real file on disk that would then be unreachable.
+    if (!id.IsValid())
+    {
+        LOG(Error, "Cannot create a virtual asset with an empty id.");
+        return nullptr;
+    }
+    if (const auto existingAsset = GetAsset(id))
+    {
+        LOG(Error, "Cannot create a virtual asset with id {0}: it is already used by {1}.", id, existingAsset->ToString());
+        return nullptr;
+    }
+    if (const auto existingObject = Scripting::TryFindObject(id))
+    {
+        LOG(Error, "Cannot create a virtual asset with id {0}: it is already used by object {1}.", id, existingObject->ToString());
+        return nullptr;
+    }
+    {
+        // Deliberately the registry cache rather than GetAssetInfo: on a miss GetAssetInfo starts a
+        // workspace discovery scan, and a miss is the normal case here.
+        AssetInfo registered;
+        if (Cache.FindAsset(id, registered))
+        {
+            LOG(Error, "Cannot create a virtual asset with id {0}: the content registry has it at '{1}'.", id, registered.Path);
+            return nullptr;
+        }
+    }
+
     // Init mock asset info
     AssetInfo info;
-    info.ID = Guid::New();
+    info.ID = id;
     info.TypeName = String(assetType.Fullname.Get(), assetType.Fullname.Length());
     info.Path = CreateTemporaryAssetPath();
 

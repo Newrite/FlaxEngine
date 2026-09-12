@@ -203,5 +203,32 @@ namespace FlaxEngine
         {
             return (T)Internal_CreateVirtualAsset(typeof(T));
         }
+
+        /// <summary>
+        /// Creates temporary and virtual asset of the given type with a specific identifier.
+        /// Virtual assets have limited usage but allow to use custom assets data at runtime.
+        /// Virtual assets are temporary and exist until application exit.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Use this when the asset identity has to be reproducible - for example when a plugin builds
+        /// assets from files of its own and scenes reference them by id. The id is refused, with an
+        /// error in the log and a null result, when it is already used by a live object or by an asset
+        /// in the content registry; it is never taken away from whoever holds it.
+        /// </para>
+        /// <para>
+        /// Releasing an id is not immediate. <see cref="Object.Destroy"/> and
+        /// <see cref="UnloadAsset"/> queue the removal for the end of the frame, and until then the id
+        /// is still in use. Call <see cref="Object.DestroyNow"/> to free an id that has to be reused
+        /// within the same frame.
+        /// </para>
+        /// </remarks>
+        /// <typeparam name="T">Type of the asset to create. Includes any asset types derived from the type.</typeparam>
+        /// <param name="id">The identifier to give the asset. Must be valid and not in use.</param>
+        /// <returns>Asset instance if created, null otherwise. See log for error message if need to.</returns>
+        public static T CreateVirtualAsset<T>(Guid id) where T : Asset
+        {
+            return (T)CreateVirtualAsset(id, typeof(T));
+        }
     }
 }

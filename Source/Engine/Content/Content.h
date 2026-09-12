@@ -381,6 +381,59 @@ public:
     static Asset* CreateVirtualAsset(const ScriptingTypeHandle& type);
 
     /// <summary>
+    /// Creates temporary and virtual asset of the given type with a specific identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Use this when the asset identity has to be reproducible - for example when a plugin builds
+    /// assets from files of its own and scenes reference them by id. The id is refused, with an error
+    /// in the log and a null result, when it is already used by a live object or by an asset in the
+    /// content registry; it is never taken away from whoever holds it.
+    /// </para>
+    /// <para>
+    /// Releasing an id is not immediate. Object.Destroy and Content.UnloadAsset queue the removal for
+    /// the end of the frame, and until then the id is still in use here. Call Object.DestroyNow to
+    /// free an id that has to be reused within the same frame.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">The identifier to give the asset. Must be valid and not in use.</param>
+    /// <param name="type">The asset type.</param>
+    /// <returns>Created asset or null if failed.</returns>
+    static Asset* CreateVirtualAsset(const Guid& id, const ScriptingTypeHandle& type);
+
+    /// <summary>
+    /// Creates temporary and virtual asset of the given type with a specific identifier.
+    /// </summary>
+    /// <param name="id">The identifier to give the asset. Must be valid and not in use.</param>
+    /// <returns>Created asset or null if failed.</returns>
+    template<typename T>
+    FORCE_INLINE static T* CreateVirtualAsset(const Guid& id)
+    {
+        return static_cast<T*>(CreateVirtualAsset(id, T::TypeInitializer));
+    }
+
+    /// <summary>
+    /// Creates temporary and virtual asset of the given type with a specific identifier.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Use this when the asset identity has to be reproducible - for example when a plugin builds
+    /// assets from files of its own and scenes reference them by id. The id is refused, with an error
+    /// in the log and a null result, when it is already used by a live object or by an asset in the
+    /// content registry; it is never taken away from whoever holds it.
+    /// </para>
+    /// <para>
+    /// Releasing an id is not immediate. Object.Destroy and Content.UnloadAsset queue the removal for
+    /// the end of the frame, and until then the id is still in use here. Call Object.DestroyNow to
+    /// free an id that has to be reused within the same frame.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">The identifier to give the asset. Must be valid and not in use.</param>
+    /// <param name="type">The asset type klass.</param>
+    /// <returns>Created asset or null if failed.</returns>
+    API_FUNCTION() static Asset* CreateVirtualAsset(const Guid& id, API_PARAM(Attributes="TypeReference(typeof(Asset))") const MClass* type);
+
+    /// <summary>
     /// Occurs when asset is being disposed and will be unloaded (by force). All references to it should be released.
     /// </summary>
     API_EVENT() static Delegate<Asset*> AssetDisposing;
