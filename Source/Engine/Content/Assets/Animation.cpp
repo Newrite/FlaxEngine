@@ -12,6 +12,8 @@
 #include "Engine/Profiler/ProfilerMemory.h"
 #include "Engine/Threading/Threading.h"
 #include "Engine/Serialization/MemoryReadStream.h"
+#include "Engine/Serialization/JsonSerializer.h"
+#include "FlaxEngine.Gen.h"
 #if USE_EDITOR
 #include "Engine/Serialization/MemoryWriteStream.h"
 #include "Engine/Serialization/JsonWriters.h"
@@ -21,7 +23,10 @@
 #include "Engine/Debug/Exceptions/ArgumentOutOfRangeException.h"
 #endif
 
-REGISTER_BINARY_ASSET(Animation, "FlaxEngine.Animation", false);
+// Virtual animations are supported so a clip can be built at runtime from a format the engine does
+// not read itself; Init/AddChannel/AddEvent fill one in. A virtual asset never runs load(), so the
+// missing data chunk it has is not a problem.
+REGISTER_BINARY_ASSET(Animation, "FlaxEngine.Animation", true);
 
 Animation::Animation(const SpawnParams& params, const AssetInfo* info)
     : BinaryAsset(params, info)
@@ -73,6 +78,169 @@ Animation::InfoData Animation::GetInfo() const
     for (auto& e : Events)
         info.MemoryUsage += e.Second.GetKeyframes().Capacity() * sizeof(StepCurve<AnimEventData>);
     return info;
+}
+
+bool Animation::Init(float duration, float framesPerSecond, AnimationRootMotionFlags rootMotionFlags, const StringView& rootNodeName)
+{
+    if (!IsVirtual())
+    {
+        LOG(Error, "Animation::Init can be used only by virtual assets ({0}).", ToString());
+        return true;
+    }
+    if (duration < ZeroTolerance || framesPerSecond < ZeroTolerance)
+    {
+        LOG(Error, "Invalid animation info (duration {0} frames at {1} fps).", duration, framesPerSecond);
+        return true;
+    }
+
+    // Hold the animation system lock as well: a graph instance may be sampling this asset right now.
+    ScopeWriteLock systemScope(Animations::SystemLocker);
+    ScopeLock lock(Locker);
+
+    Data.Duration = duration;
+    Data.FramesPerSecond = framesPerSecond;
+    Data.RootMotionFlags = rootMotionFlags;
+    Data.RootNodeName = rootNodeName;
+    Data.Channels.Clear();
+    for (const auto& e : Events)
+    {
+        for (const auto& k : e.Second.GetKeyframes())
+        {
+            if (k.Value.Instance)
+                Delete(k.Value.Instance);
+        }
+    }
+    Events.Clear();
+    NestedAnims.Clear();
+    return false;
+}
+
+bool Animation::AddChannel(const StringView& nodeName, const Span<float>& positionTimes, const Span<Float3>& positions, const Span<float>& rotationTimes, const Span<Quaternion>& rotations, const Span<float>& scaleTimes, const Span<Float3>& scales)
+{
+    if (!IsVirtual())
+    {
+        LOG(Error, "Animation::AddChannel can be used only by virtual assets ({0}).", ToString());
+        return true;
+    }
+    if (nodeName.IsEmpty())
+    {
+        LOG(Error, "Animation::AddChannel needs a node name ({0}).", ToString());
+        return true;
+    }
+    if (positionTimes.Length() != positions.Length() || rotationTimes.Length() != rotations.Length() || scaleTimes.Length() != scales.Length())
+    {
+        LOG(Error, "Animation::AddChannel got mismatched times and values for node '{0}' ({1} position, {2} rotation, {3} scale keys against {4}, {5}, {6} values).",
+            String(nodeName), positionTimes.Length(), rotationTimes.Length(), scaleTimes.Length(), positions.Length(), rotations.Length(), scales.Length());
+        return true;
+    }
+
+    ScopeWriteLock systemScope(Animations::SystemLocker);
+    ScopeLock lock(Locker);
+
+    // Replace a channel with the same node name rather than adding a second one: the skeleton mapping
+    // takes the FIRST channel that matches a node, so a duplicate would be silently dead weight.
+    NodeAnimationData* channel = nullptr;
+    for (auto& e : Data.Channels)
+    {
+        if (StringUtils::CompareIgnoreCase(e.NodeName.GetText(), nodeName.Get()) == 0)
+        {
+            channel = &e;
+            break;
+        }
+    }
+    if (!channel)
+    {
+        Data.Channels.AddOne();
+        channel = &Data.Channels.Last();
+    }
+    channel->NodeName = nodeName;
+
+    auto& positionKeyframes = channel->Position.GetKeyframes();
+    positionKeyframes.Resize(positions.Length());
+    for (int32 i = 0; i < positions.Length(); i++)
+    {
+        positionKeyframes[i].Time = positionTimes[i];
+        positionKeyframes[i].Value = positions[i];
+    }
+
+    auto& rotationKeyframes = channel->Rotation.GetKeyframes();
+    rotationKeyframes.Resize(rotations.Length());
+    for (int32 i = 0; i < rotations.Length(); i++)
+    {
+        rotationKeyframes[i].Time = rotationTimes[i];
+        rotationKeyframes[i].Value = rotations[i];
+    }
+
+    auto& scaleKeyframes = channel->Scale.GetKeyframes();
+    scaleKeyframes.Resize(scales.Length());
+    for (int32 i = 0; i < scales.Length(); i++)
+    {
+        scaleKeyframes[i].Time = scaleTimes[i];
+        scaleKeyframes[i].Value = scales[i];
+    }
+
+    return false;
+}
+
+AnimEvent* Animation::AddEvent(const StringView& trackName, float time, float duration, const StringAnsiView& typeName, const StringAnsiView& json)
+{
+    if (!IsVirtual())
+    {
+        LOG(Error, "Animation::AddEvent can be used only by virtual assets ({0}).", ToString());
+        return nullptr;
+    }
+    const ScriptingTypeHandle typeHandle = Scripting::FindScriptingType(StringAnsi(typeName));
+    if (!typeHandle)
+    {
+        LOG(Error, "Animation::AddEvent cannot find the event type '{0}'.", String(typeName));
+        return nullptr;
+    }
+    AnimEvent* instance = NewObject<AnimEvent>(typeHandle);
+    if (!instance)
+    {
+        LOG(Error, "Animation::AddEvent failed to create an instance of '{0}'.", String(typeName));
+        return nullptr;
+    }
+    if (json.HasChars())
+    {
+        // Same path a cooked animation takes through ReadStream::ReadJson, without the stream framing.
+        JsonSerializer::LoadFromBytes(instance, Span<byte>((byte*)json.Get(), json.Length()), FLAXENGINE_VERSION_BUILD);
+    }
+
+    ScopeWriteLock systemScope(Animations::SystemLocker);
+    ScopeLock lock(Locker);
+
+    StepCurve<AnimEventData>* track = nullptr;
+    for (auto& e : Events)
+    {
+        if (e.First == trackName)
+        {
+            track = &e.Second;
+            break;
+        }
+    }
+    if (!track)
+    {
+        Events.AddOne();
+        Events.Last().First = trackName;
+        track = &Events.Last().Second;
+    }
+
+    auto& keyframes = track->GetKeyframes();
+    // A StepCurve is evaluated by searching a SORTED keyframe list, so keep the insert ordered rather
+    // than relying on the caller.
+    int32 index = keyframes.Count();
+    while (index > 0 && keyframes[index - 1].Time > time)
+        index--;
+    StepCurveKeyframe<AnimEventData> keyframe;
+    keyframe.Time = time;
+    keyframe.Value.Duration = duration;
+    keyframe.Value.Instance = instance;
+#if USE_EDITOR
+    keyframe.Value.TypeName = typeName;
+#endif
+    keyframes.Insert(index, keyframe);
+    return instance;
 }
 
 #if USE_EDITOR
