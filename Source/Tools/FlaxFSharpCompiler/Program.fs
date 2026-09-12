@@ -209,14 +209,20 @@ let runServer (workDir: string) =
     let checker = FSharpChecker.Create()
     log "checker ready"
 
+    // The heartbeat has to keep ticking while a compile runs: the loop below is busy for the whole
+    // of one, and a client waiting for that compile reads the heartbeat to tell a working host from
+    // a dead one. A timer owns it, so no path through the loop can forget it.
+    let heartbeat = heartbeatPath workDir
+    let writeHeartbeat () = try File.WriteAllText(heartbeat, string DateTime.UtcNow.Ticks) with _ -> ()
+    writeHeartbeat ()
+    let heartbeatTimer = new Timers.Timer(1000.0, AutoReset = true)
+    heartbeatTimer.Elapsed.Add(fun _ -> writeHeartbeat ())
+    heartbeatTimer.Start()
+
     let mutable lastWork = DateTime.UtcNow
     let mutable running = true
 
     while running do
-        try
-            File.WriteAllText(heartbeatPath workDir, string DateTime.UtcNow.Ticks)
-        with _ -> ()
-
         let requests =
             try Directory.GetFiles(workDir, "*.req") |> Array.sortBy File.GetLastWriteTimeUtc
             with _ -> [||]
@@ -226,7 +232,6 @@ let runServer (workDir: string) =
             // stop it that is not Stop-Process.
             log "shutdown requested"
             (try File.Delete(Path.Combine(workDir, "shutdown")) with _ -> ())
-            (try File.Delete(heartbeatPath workDir) with _ -> ())
             running <- false
         elif requests.Length = 0 then
             if DateTime.UtcNow - lastWork > IdleTimeout then
@@ -261,6 +266,12 @@ let runServer (workDir: string) =
                 with ex ->
                     log (sprintf "request failed: %s: %s" (ex.GetType().Name) ex.Message)
             lastWork <- DateTime.UtcNow
+    // However the loop ended, the heartbeat must not outlive the host: a client that finds a fresh
+    // one sends its request to nobody and then waits out the reply timeout.
+    heartbeatTimer.Stop()
+    heartbeatTimer.Dispose()
+    (try File.Delete heartbeat with _ -> ())
+
     // The lock is otherwise unreferenced after startup; a finalized FileStream would release it.
     GC.KeepAlive hostLock
     0
@@ -311,7 +322,12 @@ let tryCompileViaHost (workDir: string) (responseFile: string) (timeout: TimeSpa
 
         let deadline = DateTime.UtcNow + timeout
         let mutable result = None
-        while result.IsNone && DateTime.UtcNow < deadline do
+        // A host exits between a client's check and its request (its idle timeout is one way), and
+        // its heartbeat outlives it by up to ten seconds. Without watching it, the client waits out
+        // the whole timeout for a reply nobody is going to write - a build going nowhere.
+        let mutable hostGone = false
+        let mutable nextAliveCheck = DateTime.UtcNow + TimeSpan.FromSeconds 1.0
+        while result.IsNone && not hostGone && DateTime.UtcNow < deadline do
             if File.Exists res then
                 let lines = File.ReadAllLines res
                 try File.Delete res with _ -> ()
@@ -324,6 +340,9 @@ let tryCompileViaHost (workDir: string) (responseFile: string) (timeout: TimeSpa
                 | None -> result <- Some(ExitProtocolError, [| "error FS0000: malformed reply from F# compiler host" |])
             else
                 Thread.Sleep 10
+                if DateTime.UtcNow >= nextAliveCheck then
+                    nextAliveCheck <- DateTime.UtcNow + TimeSpan.FromSeconds 1.0
+                    hostGone <- not (hostIsAlive workDir)
 
         if result.IsNone then
             // Leaving a stale .req behind would make the host compile something nobody is waiting
