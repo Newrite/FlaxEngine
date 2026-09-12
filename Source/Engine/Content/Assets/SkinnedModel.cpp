@@ -310,24 +310,29 @@ bool SkinnedModel::SetupSkeleton(const Array<SkeletonNode>& nodes, const Array<S
         return true;
     if (bones.Count() <= 0)
     {
-        if (bones.Count() > 255)
+        LOG(Warning, "Cannot setup skeleton with an empty bones array. Use the nodes-only overload to derive one bone per node.");
+        return true;
+    }
+    if (bones.Count() > 255)
+    {
+        for (auto& lod : LODs)
         {
-            for (auto& lod : LODs)
+            for (auto& mesh : lod.Meshes)
             {
-                for (auto& mesh : lod.Meshes)
+                auto* vertexLayout = mesh.GetVertexLayout();
+                VertexElement element = vertexLayout ? vertexLayout->FindElement(VertexElement::Types::BlendIndices) : VertexElement();
+                if (element.Format == PixelFormat::R8G8B8A8_UInt)
                 {
-                    auto* vertexLayout = mesh.GetVertexLayout();
-                    VertexElement element = vertexLayout ? vertexLayout->FindElement(VertexElement::Types::BlendIndices) : VertexElement();
-                    if (element.Format == PixelFormat::R8G8B8A8_UInt)
-                    {
-                        LOG(Warning, "Cannot use more than 255 bones if skinned model uses 8-bit storage for blend indices in vertices.");
-                        return true;
-                    }
+                    LOG(Warning, "Cannot use more than 255 bones ({0} given) if skinned model uses 8-bit storage for blend indices in vertices.", bones.Count());
+                    return true;
                 }
             }
         }
-        if (bones.Count() > MODEL_MAX_BONES_PER_MODEL)
-            return true;
+    }
+    if (bones.Count() > MODEL_MAX_BONES_PER_MODEL)
+    {
+        LOG(Warning, "Skinned model skeleton has too many bones. Given: {0}, maximum supported: {1}.", bones.Count(), MODEL_MAX_BONES_PER_MODEL);
+        return true;
     }
     auto model = this;
     if (!model->IsVirtual())
