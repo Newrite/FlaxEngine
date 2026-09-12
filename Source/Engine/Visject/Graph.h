@@ -303,6 +303,11 @@ public:
                 return true;
         }
 
+        // A read that refused an implausible length flags the stream rather than throwing, so check
+        // it here: the caller knows which asset this graph came from and can say so.
+        if (stream->HasError())
+            return true;
+
         return false;
     }
 

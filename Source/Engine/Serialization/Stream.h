@@ -6,7 +6,12 @@
 #include "Engine/Core/Types/BaseTypes.h"
 
 #define FILESTREAM_BUFFER_SIZE 4096
-#define STREAM_MAX_STRING_LENGTH (4*1024) // 4 kB
+// Sanity bound on a serialized string's length prefix, checked before allocating for it. It exists
+// only to stop a corrupt or hostile stream asking for a huge allocation - nothing in the format
+// depends on it, the length is an int32 and the characters follow inline. 4 kB was too small for
+// strings the engine itself produces: a material Custom Code node's HLSL goes through
+// WriteStream::Write(const Variant&) as one string and passes 4 kB easily.
+#define STREAM_MAX_STRING_LENGTH (1024*1024) // 1 MB
 
 class ReadStream;
 class WriteStream;

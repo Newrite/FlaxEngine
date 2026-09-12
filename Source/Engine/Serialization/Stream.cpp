@@ -139,7 +139,11 @@ void ReadStream::Read(VariantType& data)
     else if (typeNameLength > 0)
     {
         // [Deprecated on 27.08.2020, expires on 27.08.2021]
-        ASSERT(typeNameLength < STREAM_MAX_STRING_LENGTH);
+        if (typeNameLength > STREAM_MAX_STRING_LENGTH)
+        {
+            _hasError = true;
+            return;
+        }
         Array<Char> chars;
         chars.Resize(typeNameLength + 1);
         Char* ptr = chars.Get();
@@ -205,7 +209,14 @@ void ReadStream::Read(Variant& data)
     {
         int32 length;
         ReadInt32(&length);
-        ASSERT(length < STREAM_MAX_STRING_LENGTH);
+        if (length < 0 || length > STREAM_MAX_STRING_LENGTH)
+        {
+            // Fail the read rather than kill the process: whoever is loading this can report which
+            // asset it came from, which an assert here cannot.
+            _hasError = true;
+            data.SetType(VariantType(VariantType::Null));
+            return;
+        }
         const int32 dataLength = length * sizeof(Char) + 2;
         if (data.AsBlob.Length != dataLength)
         {
@@ -364,7 +375,12 @@ void ReadStream::Read(Variant& data)
     {
         int32 length;
         ReadInt32(&length);
-        ASSERT(length < STREAM_MAX_STRING_LENGTH);
+        if (length < 0 || length > STREAM_MAX_STRING_LENGTH)
+        {
+            _hasError = true;
+            data.SetType(VariantType(VariantType::Null));
+            return;
+        }
         const int32 dataLength = length + 1;
         if (data.AsBlob.Length != dataLength)
         {
