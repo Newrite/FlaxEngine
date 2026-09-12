@@ -406,13 +406,32 @@ namespace FlaxEditor.Modules.SourceCodeEditing
                 if (editorModule && targetText.Contains("GameProjectTarget", StringComparison.Ordinal))
                     continue;
 
-                // TODO: Handle edge case when there are no modules in a target
                 var index = targetText.IndexOf("Modules.Add");
                 if (index != -1)
                 {
                     var newText = targetText.Insert(index, targetModuleText);
                     File.WriteAllText(file, newText);
                     Editor.Log($"Module added to Target: {file}");
+                }
+                else
+                {
+                    // A target lists no modules after the last one is removed, and a new project starts
+                    // that way too. With nothing to insert before, the module would be created on disk
+                    // and referenced by no target, which builds it nowhere and says nothing.
+                    const string init = "base.Init();";
+                    var initIndex = targetText.IndexOf(init, StringComparison.Ordinal);
+                    if (initIndex != -1)
+                    {
+                        var newText = targetText.Insert(initIndex + init.Length,
+                                                        Environment.NewLine + Environment.NewLine + "        " + $"Modules.Add(nameof({moduleName}));");
+                        File.WriteAllText(file, newText);
+                        Editor.Log($"Module added to Target: {file}");
+                    }
+                    else
+                    {
+                        Editor.LogWarning($"Cannot add the module to {file}: it has no modules and no base.Init() to add one after. "
+                                          + $"Add Modules.Add(nameof({moduleName})); to it by hand, or nothing will build the module.");
+                    }
                 }
             }
         }
