@@ -158,7 +158,13 @@ public:
     // Result normal/tangent are already packed into [0;1] range.
     API_FUNCTION() static void CalculateTangentFrame(API_PARAM(Out) Float3& resultNormal, API_PARAM(Out) Float4& resultTangent, API_PARAM(Ref) const Float3& normal);
     // Result normal/tangent are already packed into [0;1] range.
+    // The bitangent sign is always positive: the handedness of the tangent basis cannot be derived
+    // from the normal and the tangent alone. Use the overload that takes a bitangent for meshes with
+    // mirrored UVs.
     API_FUNCTION() static void CalculateTangentFrame(API_PARAM(Out) Float3& resultNormal, API_PARAM(Out) Float4& resultTangent, API_PARAM(Ref) const Float3& normal, API_PARAM(Ref) const Float3& tangent);
+    // Result normal/tangent are already packed into [0;1] range. The bitangent sign is taken from the
+    // given bitangent, so a mirrored tangent basis survives.
+    API_FUNCTION() static void CalculateTangentFrame(API_PARAM(Out) Float3& resultNormal, API_PARAM(Out) Float4& resultTangent, API_PARAM(Ref) const Float3& normal, API_PARAM(Ref) const Float3& tangent, API_PARAM(Ref) const Float3& bitangent);
 
     static void ComputeSphereModelDrawMatrix(const RenderView& view, const Float3& position, float radius, Matrix& resultWorld, bool& resultIsViewInside);
     static void ComputeBoxModelDrawMatrix(const RenderView& view, const OrientedBoundingBox& box, Matrix& resultWorld, bool& resultIsViewInside);

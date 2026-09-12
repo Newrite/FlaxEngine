@@ -622,9 +622,8 @@ void RenderTools::CalculateTangentFrame(Float3& resultNormal, Float4& resultTang
     const Float3 c2 = Float3::Cross(normal, Float3::UnitY);
     const Float3 tangent = c1.LengthSquared() > c2.LengthSquared() ? c1 : c2;
 
-    // Calculate bitangent sign
-    const Float3 bitangent = Float3::Normalize(Float3::Cross(normal, tangent));
-    const byte sign = static_cast<byte>(Float3::Dot(Float3::Cross(bitangent, normal), tangent) < 0.0f ? 1 : 0);
+    // The tangent was just derived from the normal, so the basis is right-handed by construction.
+    constexpr byte sign = 0;
 
     // Set tangent frame
     resultNormal = normal * 0.5f + 0.5f;
@@ -633,9 +632,22 @@ void RenderTools::CalculateTangentFrame(Float3& resultNormal, Float4& resultTang
 
 void RenderTools::CalculateTangentFrame(Float3& resultNormal, Float4& resultTangent, const Float3& normal, const Float3& tangent)
 {
-    // Calculate bitangent sign
-    const Float3 bitangent = Float3::Normalize(Float3::Cross(normal, tangent));
-    const byte sign = static_cast<byte>(Float3::Dot(Float3::Cross(bitangent, normal), tangent) < 0.0f ? 1 : 0);
+    // The handedness of a tangent basis is not a function of the normal and the tangent: it needs the
+    // bitangent. Assume right-handed, which is what the previous
+    //     Dot(Cross(Normalize(Cross(N, T)), N), T) < 0
+    // test always produced anyway - that expression equals |N x T|, which is never negative. Meshes
+    // with mirrored UVs must use the overload below.
+    constexpr byte sign = 0;
+
+    // Set tangent frame
+    resultNormal = normal * 0.5f + 0.5f;
+    resultTangent = Float4(tangent * 0.5f + 0.5f, sign);
+}
+
+void RenderTools::CalculateTangentFrame(Float3& resultNormal, Float4& resultTangent, const Float3& normal, const Float3& tangent, const Float3& bitangent)
+{
+    // Calculate bitangent sign from the bitangent the caller actually has
+    const byte sign = static_cast<byte>(Float3::Dot(Float3::Cross(normal, tangent), bitangent) < 0.0f ? 1 : 0);
 
     // Set tangent frame
     resultNormal = normal * 0.5f + 0.5f;

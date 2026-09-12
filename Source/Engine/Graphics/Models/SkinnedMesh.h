@@ -102,8 +102,9 @@ public:
     /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
     /// <param name="uvs">The texture coordinates (per vertex).</param>
     /// <param name="colors">The vertex colors (per vertex).</param>
+    /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used. Pass them for meshes with mirrored UVs; without them the tangent basis is assumed right-handed.</param>
     /// <returns>True if failed, otherwise false.</returns>
-    bool UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint16* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals = nullptr, const Float3* tangents = nullptr, const Float2* uvs = nullptr, const Color32* colors = nullptr);
+    bool UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint16* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals = nullptr, const Float3* tangents = nullptr, const Float2* uvs = nullptr, const Color32* colors = nullptr, const Float3* bitangents = nullptr);
 
     /// <summary>
     /// Updates the model mesh (used by the virtual models created with Init rather than Load).
@@ -120,8 +121,9 @@ public:
     /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
     /// <param name="uvs">The texture coordinates (per vertex).</param>
     /// <param name="colors">The vertex colors (per vertex).</param>
+    /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used. Pass them for meshes with mirrored UVs; without them the tangent basis is assumed right-handed.</param>
     /// <returns>True if failed, otherwise false.</returns>
-    bool UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint32* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals = nullptr, const Float3* tangents = nullptr, const Float2* uvs = nullptr, const Color32* colors = nullptr);
+    bool UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint32* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals = nullptr, const Float3* tangents = nullptr, const Float2* uvs = nullptr, const Color32* colors = nullptr, const Float3* bitangents = nullptr);
 
 public:
     /// <summary>
@@ -147,8 +149,8 @@ public:
 private:
     // Internal bindings
 #if !COMPILE_WITHOUT_CSHARP
-    API_FUNCTION(NoProxy) bool UpdateMeshUInt(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj);
-    API_FUNCTION(NoProxy) bool UpdateMeshUShort(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj);
+    API_FUNCTION(NoProxy) bool UpdateMeshUInt(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj, const MArray* bitangentsObj);
+    API_FUNCTION(NoProxy) bool UpdateMeshUShort(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj, const MArray* bitangentsObj);
     API_FUNCTION(NoProxy) MArray* DownloadBuffer(bool forceGpu, MTypeObject* resultType, int32 typeI);
 #endif
 };

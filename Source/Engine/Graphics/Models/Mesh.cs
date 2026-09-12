@@ -120,7 +120,8 @@ namespace FlaxEngine
         /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(Float3[] vertices, int[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(Float3[] vertices, int[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null, Float3[] bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -141,7 +142,10 @@ namespace FlaxEngine
             if (colors != null && colors.Length != vertices.Length)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors))
+            if (bitangents != null && bitangents.Length != vertices.Length)
+                throw new ArgumentOutOfRangeException(nameof(bitangents));
+
+            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors, bitangents))
                 throw new Exception("Failed to update mesh data.");
         }
 
@@ -156,7 +160,8 @@ namespace FlaxEngine
         /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(List<Float3> vertices, List<int> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(List<Float3> vertices, List<int> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null, List<Float3> bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -177,7 +182,7 @@ namespace FlaxEngine
             if (colors != null && colors.Count != vertices.Count)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors)))
+            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors), Utils.ExtractArrayFromList(bitangents)))
                 throw new Exception("Failed to update mesh data.");
         }
 
@@ -192,7 +197,8 @@ namespace FlaxEngine
         /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(Float3[] vertices, uint[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(Float3[] vertices, uint[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null, Float3[] bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -213,7 +219,10 @@ namespace FlaxEngine
             if (colors != null && colors.Length != vertices.Length)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors))
+            if (bitangents != null && bitangents.Length != vertices.Length)
+                throw new ArgumentOutOfRangeException(nameof(bitangents));
+
+            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors, bitangents))
                 throw new Exception("Failed to update mesh data.");
         }
 
@@ -228,7 +237,8 @@ namespace FlaxEngine
         /// <param name="tangents">The normal vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(List<Float3> vertices, List<uint> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(List<Float3> vertices, List<uint> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null, List<Float3> bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -249,7 +259,7 @@ namespace FlaxEngine
             if (colors != null && colors.Count != vertices.Count)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors)))
+            if (Internal_UpdateMeshUInt(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors), Utils.ExtractArrayFromList(bitangents)))
                 throw new Exception("Failed to update mesh data.");
         }
 
@@ -264,7 +274,8 @@ namespace FlaxEngine
         /// <param name="tangents">The tangent vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(Float3[] vertices, ushort[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(Float3[] vertices, ushort[] triangles, Float3[] normals = null, Float3[] tangents = null, Float2[] uv = null, Color32[] colors = null, Float3[] bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -285,7 +296,10 @@ namespace FlaxEngine
             if (colors != null && colors.Length != vertices.Length)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUShort(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors))
+            if (bitangents != null && bitangents.Length != vertices.Length)
+                throw new ArgumentOutOfRangeException(nameof(bitangents));
+
+            if (Internal_UpdateMeshUShort(__unmanagedPtr, vertices.Length, triangles.Length / 3, vertices, triangles, normals, tangents, uv, colors, bitangents))
                 throw new Exception("Failed to update mesh data.");
         }
 
@@ -300,7 +314,8 @@ namespace FlaxEngine
         /// <param name="tangents">The tangent vectors (per vertex). Use null to compute them from normal vectors.</param>
         /// <param name="uv">The texture coordinates (per vertex).</param>
         /// <param name="colors">The vertex colors (per vertex).</param>
-        public void UpdateMesh(List<Float3> vertices, List<ushort> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null)
+        /// <param name="bitangents">The bitangent vectors (per vertex). Only their handedness is used, so the tangent basis of a mesh with mirrored UVs survives. Without them the basis is assumed right-handed.</param>
+        public void UpdateMesh(List<Float3> vertices, List<ushort> triangles, List<Float3> normals = null, List<Float3> tangents = null, List<Float2> uv = null, List<Color32> colors = null, List<Float3> bitangents = null)
         {
             if (!ParentModel.IsVirtual)
                 throw new InvalidOperationException("Only virtual models can be updated at runtime.");
@@ -321,7 +336,7 @@ namespace FlaxEngine
             if (colors != null && colors.Count != vertices.Count)
                 throw new ArgumentOutOfRangeException(nameof(colors));
 
-            if (Internal_UpdateMeshUShort(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors)))
+            if (Internal_UpdateMeshUShort(__unmanagedPtr, vertices.Count, triangles.Count / 3, Utils.ExtractArrayFromList(vertices), Utils.ExtractArrayFromList(triangles), Utils.ExtractArrayFromList(normals), Utils.ExtractArrayFromList(tangents), Utils.ExtractArrayFromList(uv), Utils.ExtractArrayFromList(colors), Utils.ExtractArrayFromList(bitangents)))
                 throw new Exception("Failed to update mesh data.");
         }
 

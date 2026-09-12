@@ -35,7 +35,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 namespace
 {
-    bool UpdateMesh(MeshBase* mesh, uint32 vertexCount, uint32 triangleCount, PixelFormat indexFormat, const Float3* vertices, const void* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors)
+    bool UpdateMesh(MeshBase* mesh, uint32 vertexCount, uint32 triangleCount, PixelFormat indexFormat, const Float3* vertices, const void* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors, const Float3* bitangents)
     {
         auto model = mesh->GetModelBase();
         CHECK_RETURN(model && model->IsVirtual(), true);
@@ -86,7 +86,10 @@ namespace
                         const Float3 tangent = tangents[i];
                         Float3 n;
                         Float4 t;
-                        RenderTools::CalculateTangentFrame(n, t, normal, tangent);
+                        if (bitangents)
+                            RenderTools::CalculateTangentFrame(n, t, normal, tangent, bitangents[i]);
+                        else
+                            RenderTools::CalculateTangentFrame(n, t, normal, tangent);
                         normalStream.SetFloat3(i, n);
                         tangentStream.SetFloat4(i, t);
                     }
@@ -131,7 +134,7 @@ namespace
 
 #if !COMPILE_WITHOUT_CSHARP
     template<typename IndexType>
-    bool UpdateMesh(SkinnedMesh* mesh, uint32 vertexCount, uint32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj)
+    bool UpdateMesh(SkinnedMesh* mesh, uint32 vertexCount, uint32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj, const MArray* bitangentsObj)
     {
         ASSERT((uint32)MCore::Array::GetLength(verticesObj) >= vertexCount);
         ASSERT((uint32)MCore::Array::GetLength(trianglesObj) / 3 >= triangleCount);
@@ -144,7 +147,8 @@ namespace
         const auto tangents = tangentsObj ? MCore::Array::GetAddress<Float3>(tangentsObj) : nullptr;
         const auto uvs = uvObj ? MCore::Array::GetAddress<Float2>(uvObj) : nullptr;
         const auto colors = colorsObj ? MCore::Array::GetAddress<Color32>(colorsObj) : nullptr;
-        return UpdateMesh(mesh, vertexCount, triangleCount, indexFormat, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors);
+        const auto bitangents = bitangentsObj ? MCore::Array::GetAddress<Float3>(bitangentsObj) : nullptr;
+        return UpdateMesh(mesh, vertexCount, triangleCount, indexFormat, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors, bitangents);
     }
 #endif
 }
@@ -298,14 +302,14 @@ bool SkinnedMesh::UpdateMesh(uint32 vertexCount, uint32 triangleCount, const VB0
     return failed;
 }
 
-bool SkinnedMesh::UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint16* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors)
+bool SkinnedMesh::UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint16* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors, const Float3* bitangents)
 {
-    return ::UpdateMesh(this, vertexCount, triangleCount, PixelFormat::R16_UInt, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors);
+    return ::UpdateMesh(this, vertexCount, triangleCount, PixelFormat::R16_UInt, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors, bitangents);
 }
 
-bool SkinnedMesh::UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint32* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors)
+bool SkinnedMesh::UpdateMesh(uint32 vertexCount, uint32 triangleCount, const Float3* vertices, const uint32* triangles, const Int4* blendIndices, const Float4* blendWeights, const Float3* normals, const Float3* tangents, const Float2* uvs, const Color32* colors, const Float3* bitangents)
 {
-    return ::UpdateMesh(this, vertexCount, triangleCount, PixelFormat::R32_UInt, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors);
+    return ::UpdateMesh(this, vertexCount, triangleCount, PixelFormat::R32_UInt, vertices, triangles, blendIndices, blendWeights, normals, tangents, uvs, colors, bitangents);
 }
 
 void SkinnedMesh::Draw(const RenderContext& renderContext, const DrawInfo& info, float lodDitherFactor) const
@@ -409,14 +413,14 @@ void SkinnedMesh::Release()
 
 #if !COMPILE_WITHOUT_CSHARP
 
-bool SkinnedMesh::UpdateMeshUInt(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj)
+bool SkinnedMesh::UpdateMeshUInt(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj, const MArray* bitangentsObj)
 {
-    return ::UpdateMesh<uint32>(this, (uint32)vertexCount, (uint32)triangleCount, verticesObj, trianglesObj, blendIndicesObj, blendWeightsObj, normalsObj, tangentsObj, uvObj, colorsObj);
+    return ::UpdateMesh<uint32>(this, (uint32)vertexCount, (uint32)triangleCount, verticesObj, trianglesObj, blendIndicesObj, blendWeightsObj, normalsObj, tangentsObj, uvObj, colorsObj, bitangentsObj);
 }
 
-bool SkinnedMesh::UpdateMeshUShort(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj)
+bool SkinnedMesh::UpdateMeshUShort(int32 vertexCount, int32 triangleCount, const MArray* verticesObj, const MArray* trianglesObj, const MArray* blendIndicesObj, const MArray* blendWeightsObj, const MArray* normalsObj, const MArray* tangentsObj, const MArray* uvObj, const MArray* colorsObj, const MArray* bitangentsObj)
 {
-    return ::UpdateMesh<uint16>(this, (uint32)vertexCount, (uint32)triangleCount, verticesObj, trianglesObj, blendIndicesObj, blendWeightsObj, normalsObj, tangentsObj, uvObj, colorsObj);
+    return ::UpdateMesh<uint16>(this, (uint32)vertexCount, (uint32)triangleCount, verticesObj, trianglesObj, blendIndicesObj, blendWeightsObj, normalsObj, tangentsObj, uvObj, colorsObj, bitangentsObj);
 }
 
 // [Deprecated in v1.10]
