@@ -950,7 +950,12 @@ void AnimatedModel::OnAnimationUpdated_Sync()
 {
     // Update synchronous stuff
     UpdateSockets();
-    ApplyRootMotion(GraphInstance.RootMotion);
+    // A model that copies its pose from a master did not produce that root motion - the master did,
+    // and the master has already applied it. Applying it again here moves the character once per
+    // model sharing the pose, which for a character assembled out of a body plus head, hands, feet
+    // and armour is five times too far.
+    if (!_masterPose)
+        ApplyRootMotion(GraphInstance.RootMotion);
     if (!_isDuringUpdateEvent)
     {
         // Prevent stack-overflow when gameplay modifies the pose within the event
