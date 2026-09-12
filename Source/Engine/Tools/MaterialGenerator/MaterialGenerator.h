@@ -114,6 +114,10 @@ private:
 
     Array<MaterialLayer*> _layers;
     Array<MaterialGraphBox*, FixedAllocation<16>> _vsToPsInterpolants;
+    // Vertex-shader expression for an interpolant whose box cannot be resolved by following its
+    // connection - an output box of a source node such as the pre-skinned vertex attributes.
+    // Empty means "resolve the box the usual way".
+    Array<String, FixedAllocation<16>> _vsToPsInterpolantValues;
     MaterialTreeType _treeType;
     MaterialLayer* _treeLayer = nullptr;
     String _treeLayerVarName;
@@ -204,7 +208,7 @@ private:
     MaterialValue AccessParticleAttribute(Node* caller, const StringView& name, ParticleAttributeValueTypes valueType, const Char* index = nullptr, ParticleAttributeSpace space = ParticleAttributeSpace::AsIs);
     void prepareLayer(MaterialLayer* layer, bool allowVisibleParams);
     void WriteCustomGlobalCode(const Array<const MaterialGraph::Node*, InlinedAllocation<8>>& nodes, int32 templateInputsMapping);
-    Value VsToPs(Node* node, Box* input);
+    Value VsToPs(Node* node, Box* input, const String& vertexShaderValue = String::Empty);
 
 public:
 

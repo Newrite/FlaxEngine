@@ -540,7 +540,9 @@ VertexOutput VS_Skinned(ModelInput_Skinned input)
 	materialInput.TwoSidedSign = object.WorldDeterminantSign;
 	materialInput.SvPosition = output.Position;
 	materialInput.PreSkinnedPosition = input.Position.xyz;
-	materialInput.PreSkinnedNormal = tangentToLocal[2].xyz;
+	// Pre-skinned: the vertex normal as it is stored, before SkinTangents rotated it by the blended
+	// bone matrix. tangentToLocal[2] here is the post-skinning normal and is not what this input means.
+	materialInput.PreSkinnedNormal = input.Normal.xyz * 2.0 - 1.0;
 	materialInput.Object = object;
 	Material material = GetMaterialVS(materialInput);
 #endif

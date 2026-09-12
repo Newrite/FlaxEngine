@@ -163,6 +163,7 @@ bool MaterialGenerator::Generate(WriteStream& source, MaterialInfo& materialInfo
     _parameters.Clear();
     _localIndex = 0;
     _vsToPsInterpolants.Clear();
+    _vsToPsInterpolantValues.Clear();
     _treeLayer = nullptr;
     _graphStack.Clear();
     for (int32 i = 0; i < _layers.Count(); i++)
@@ -412,7 +413,13 @@ bool MaterialGenerator::Generate(WriteStream& source, MaterialInfo& materialInfo
         eatMaterialGraphBox(baseLayer, MaterialGraphBoxes::TessellationMultiplier);
         for (int32 i = 0; i < _vsToPsInterpolants.Count(); i++)
         {
-            const auto value = tryGetValue(_vsToPsInterpolants[i], Value::Zero).AsFloat4().Value;
+            // A node that registered a vertex-shader expression of its own - the pre-skinned vertex
+            // attributes - passes it here. Its interpolant box is an output box, and following that
+            // box's connection walks forwards into whatever consumes it rather than backwards to a
+            // value, which is why using such a node in the pixel shader used to fail to generate.
+            const auto value = _vsToPsInterpolantValues[i].HasChars()
+                ? Value(VariantType::Float4, _vsToPsInterpolantValues[i]).AsFloat4().Value
+                : tryGetValue(_vsToPsInterpolants[i], Value::Zero).AsFloat4().Value;
             _writer.Write(TEXT("\tmaterial.CustomVSToPS[{0}] = {1};\n"), i, value);
         }
         _writer.Write(TEXT("\treturn material;"));
@@ -855,7 +862,7 @@ void MaterialGenerator::WriteCustomGlobalCode(const Array<const MaterialGraph::N
     }
 }
 
-ShaderGenerator::Value MaterialGenerator::VsToPs(Node* node, Box* input)
+ShaderGenerator::Value MaterialGenerator::VsToPs(Node* node, Box* input, const String& vertexShaderValue)
 {
     // If used in VS then pass the value from the input box
     if (_treeType == MaterialTreeType::VertexShader)
@@ -880,6 +887,7 @@ ShaderGenerator::Value MaterialGenerator::VsToPs(Node* node, Box* input)
 
     // Indicate the interpolator slot usage
     _vsToPsInterpolants.Add(input);
+    _vsToPsInterpolantValues.Add(vertexShaderValue);
     return Value(VariantType::Float4, String::Format(TEXT("input.CustomVSToPS[{0}]"), _vsToPsInterpolants.Count() - 1));
 }
 

@@ -192,13 +192,13 @@ void MaterialGenerator::ProcessGroupMaterial(Box* box, Node* node, Value& value)
     case 13:
         value = Value(VariantType::Float3, TEXT("input.PreSkinnedPosition"));
         if (_treeType != MaterialTreeType::VertexShader)
-            value = VsToPs(node, box).AsFloat3();
+            value = VsToPs(node, box, TEXT("float4(input.PreSkinnedPosition, 0)")).AsFloat3();
         break;
     // Pre-skinned Local Normal
     case 14:
         value = Value(VariantType::Float3, TEXT("input.PreSkinnedNormal"));
         if (_treeType != MaterialTreeType::VertexShader)
-            value = VsToPs(node, box).AsFloat3();
+            value = VsToPs(node, box, TEXT("float4(input.PreSkinnedNormal, 0)")).AsFloat3();
         break;
     // Depth
     case 15:
