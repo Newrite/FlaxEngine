@@ -541,13 +541,15 @@ void AnimGraphExecutor::ProcessAnimation(AnimGraphImpulse* nodes, AnimGraphNode*
                     srcNode.Orientation = rootBefore.Orientation.Conjugated() * rootNow.Orientation;
             }
 
-            // Convert root motion from local-space to the actor-space (eg. if root node is not actually a root and its parents have rotation/scale)
+            // Convert root motion from local-space to the actor-space (eg. if root node is not actually a root and its parents have rotation/scale).
+            // The value is a DELTA, so only the parent's rotation and scale apply to it - LocalToWorld would add the parent's position on top of every
+            // frame's movement, which is invisible while the root's ancestors sit at the origin and wrong as soon as one of them does not.
             auto& skeleton = _graph.BaseModel->Skeleton;
             int32 parentIndex = skeleton.Nodes[rootNodeIndex].ParentIndex;
             while (parentIndex != -1)
             {
                 const Transform& parentNode = nodes->Nodes[parentIndex];
-                srcNode.Translation = parentNode.LocalToWorld(srcNode.Translation);
+                srcNode.Translation = parentNode.LocalToWorldVector(srcNode.Translation);
                 parentIndex = skeleton.Nodes[parentIndex].ParentIndex;
             }
         }
