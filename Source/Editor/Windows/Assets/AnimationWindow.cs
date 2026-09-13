@@ -33,6 +33,13 @@ namespace FlaxEditor.Windows.Assets
 
             public SkinnedModel BaseModel;
 
+            /// <summary>
+            /// Whether the clip's root motion moves the previewed character. With it on, a clip that
+            /// travels - a run, a dodge - walks the character out of the viewport and every replay
+            /// starts further away; with it off the same clip plays on the spot.
+            /// </summary>
+            public bool RootMotion = true;
+
             public Preview(AnimationWindow window)
             : base(true)
             {
@@ -44,6 +51,8 @@ namespace FlaxEditor.Windows.Assets
             {
                 PreviewActor.SkinnedModel = model;
                 PreviewActor.AnimationGraph = null;
+                PreviewActor.LocalPosition = Vector3.Zero;
+                PreviewActor.LocalOrientation = Quaternion.Identity;
                 Object.Destroy(ref _animGraph);
                 if (!model)
                     return;
@@ -51,7 +60,7 @@ namespace FlaxEditor.Windows.Assets
 
                 // Use virtual animation graph to playback the animation
                 _animGraph = FlaxEngine.Content.CreateVirtualAsset<AnimationGraph>();
-                _animGraph.InitAsAnimation(baseModel, _window.Asset, true, true);
+                _animGraph.InitAsAnimation(baseModel, _window.Asset, true, RootMotion);
                 PreviewActor.AnimationGraph = _animGraph;
             }
 
@@ -103,6 +112,7 @@ namespace FlaxEditor.Windows.Assets
                         // Animation preview
                         Window._preview = new Preview(Window)
                         {
+                            RootMotion = Window._initialRootMotion,
                             ViewportCamera = new FPSCamera(),
                             ScaleToFit = false,
                             AnchorPreset = AnchorPresets.StretchAll,
@@ -152,6 +162,20 @@ namespace FlaxEditor.Windows.Assets
                         else
                             Window.Editor.ProjectCache.RemoveCustomData(customDataName);
                     }
+                }
+            }
+
+            [EditorDisplay("Preview"), NoSerialize, VisibleIf(nameof(ShowBaseModel))]
+            [Tooltip("Let the clip's root motion move the character. Off plays it on the spot, which is what a clip that travels needs if it is to stay in view.")]
+            public bool RootMotion
+            {
+                get => Window?._preview?.RootMotion ?? true;
+                set
+                {
+                    if (Window?._preview == null || Window._preview.RootMotion == value)
+                        return;
+                    Window._preview.RootMotion = value;
+                    Window._preview.SetModel(PreviewModel);
                 }
             }
 
@@ -258,6 +282,7 @@ namespace FlaxEditor.Windows.Assets
         private ToolStripButton _redoButton;
         private bool _isWaitingForTimelineLoad;
         private SkinnedModel _initialPreviewModel, _initialBaseModel;
+        private bool _initialRootMotion = true;
         private float _initialPanel2Splitter = 0.6f;
         private bool _timelineIsDirty;
 
@@ -288,6 +313,25 @@ namespace FlaxEditor.Windows.Assets
                     _properties.PreviewModel = value;
                 else
                     _initialPreviewModel = value;
+            }
+        }
+
+        /// <summary>
+        /// Whether the previewed character is moved by the clip's root motion. On by default, which is
+        /// what an animation authored against a scene expects; off keeps a travelling clip in view.
+        /// </summary>
+        public bool PreviewRootMotion
+        {
+            get => _preview?.RootMotion ?? _initialRootMotion;
+            set
+            {
+                _initialRootMotion = value;
+                if (_preview == null)
+                    return;
+                if (_preview.RootMotion == value)
+                    return;
+                _preview.RootMotion = value;
+                _preview.SetModel(PreviewModel);
             }
         }
 

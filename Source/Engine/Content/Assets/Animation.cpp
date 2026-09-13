@@ -204,7 +204,21 @@ AnimEvent* Animation::AddEvent(const StringView& trackName, float time, float du
     if (json.HasChars())
     {
         // Same path a cooked animation takes through ReadStream::ReadJson, without the stream framing.
-        JsonSerializer::LoadFromBytes(instance, Span<byte>((byte*)json.Get(), json.Length()), FLAXENGINE_VERSION_BUILD);
+        //
+        // A managed event keeps its own fields under the key "V": SerializableScriptingObject::Serialize
+        // writes them there and Deserialize looks nowhere else (ScriptingObject.cpp:38-88). A caller
+        // handing the fields over flat - {"Name":"FootLeft"} - is the obvious thing to write and used
+        // to be ignored in silence, so it is wrapped here instead.
+        StringAnsi wrapped;
+        StringAnsiView payload = json;
+        rapidjson_flax::Document document;
+        document.Parse(json.Get(), json.Length());
+        if (!document.HasParseError() && document.IsObject() && !document.HasMember("V"))
+        {
+            wrapped = StringAnsi("{\"V\":") + StringAnsi(json.Get(), json.Length()) + StringAnsi("}");
+            payload = StringAnsiView(wrapped.Get(), wrapped.Length());
+        }
+        JsonSerializer::LoadFromBytes(instance, Span<byte>((byte*)payload.Get(), payload.Length()), FLAXENGINE_VERSION_BUILD);
     }
 
     ScopeWriteLock systemScope(Animations::SystemLocker);

@@ -48,6 +48,12 @@ namespace FlaxEditor.Content.Thumbnails
             if (_task == null)
                 return;
 
+            // Nothing on disk to render one from. A virtual asset item has no file by definition, and
+            // a deleted one has none any more; asking for a preview would have the thumbnail service
+            // call Content.LoadAsync on that path and log "Missing file" once per request.
+            if (!item.Exists)
+                return;
+
             // Check if use default icon
             var defaultThumbnail = item.DefaultThumbnail;
             if (defaultThumbnail.IsValid)
