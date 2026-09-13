@@ -53,7 +53,8 @@ namespace FlaxEditor.Windows.Assets
             {
                 Parent = this
             };
-            _toolstrip.AddButton(editor.Icons.Search64, () => Editor.Windows.ContentWin.Select(_item)).LinkTooltip("Show and select in Content Window.");
+            if (!(item is VirtualAssetItem))
+                _toolstrip.AddButton(editor.Icons.Search64, () => Editor.Windows.ContentWin.Select(_item)).LinkTooltip("Show and select in Content Window.");
 
             InputActions.Add(options => options.Save, Save);
 
@@ -357,6 +358,9 @@ namespace FlaxEditor.Windows.Assets
         /// <returns>Loaded asset or null if cannot do it.</returns>
         protected virtual T LoadAsset()
         {
+            // A virtual asset has no file to load from; it is already in memory, and its id finds it.
+            if (_item is VirtualAssetItem virtualItem)
+                return virtualItem.Asset as T;
             return FlaxEngine.Content.LoadAsync<T>(_item.Path);
         }
 
@@ -540,6 +544,11 @@ namespace FlaxEditor.Windows.Assets
         /// <inheritdoc />
         protected override T LoadAsset()
         {
+            // A virtual asset has no file to clone, so there is nothing to edit a copy of: the window
+            // gets the live asset and shows it. Saving is refused for the same reason.
+            if (_item is VirtualAssetItem virtualItem)
+                return virtualItem.Asset as T;
+
             // Clone asset
             if (Editor.ContentEditing.FastTempAssetClone(_item.Path, out var clonePath))
                 return null;

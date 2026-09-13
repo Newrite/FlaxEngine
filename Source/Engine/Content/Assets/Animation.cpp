@@ -627,6 +627,33 @@ bool Animation::Save(const StringView& path)
         }
 
         // Set data to the chunk asset
+        if (IsVirtual())
+        {
+            // A virtual asset owns no storage container, so GetOrCreateChunk returns null by design
+            // (BinaryAsset.cpp:200) and there is nothing to copy the bytes into. Writing one to a file
+            // is still meaningful - it is how an asset built at run time becomes a project asset - so
+            // the header and the chunk for the new file are built here rather than borrowed from this
+            // asset. The chunk lives on the stack: FlaxStorage::Create only reads chunks.
+            if (path.IsEmpty())
+            {
+                LOG(Error, "Cannot save a virtual animation without a path ({0}).", ToString());
+                return true;
+            }
+            AssetInitData virtualData;
+            virtualData.SerializedVersion = SerializedVersion;
+            virtualData.Header.TypeName = Animation::TypeName;
+            FlaxChunk virtualChunk;
+            virtualChunk.Data.Copy(ToSpan(stream));
+            virtualData.Header.Chunks[0] = &virtualChunk;
+            const bool virtualFailed = SaveToAsset(path, virtualData);
+            virtualData.Header.Chunks[0] = nullptr;
+            if (virtualFailed)
+            {
+                LOG(Error, "Cannot save the virtual animation to '{0}'", path);
+                return true;
+            }
+            return false;
+        }
         auto chunk0 = GetOrCreateChunk(0);
         ASSERT(chunk0 != nullptr);
         chunk0->Data.Copy(ToSpan(stream));

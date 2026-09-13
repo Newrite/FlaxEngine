@@ -33,6 +33,45 @@ namespace FlaxEditor.Modules
             return item != null ? Open(item) : null;
         }
 
+        private readonly System.Collections.Generic.Dictionary<Guid, VirtualAssetItem> _virtualItems = new System.Collections.Generic.Dictionary<Guid, VirtualAssetItem>();
+
+        /// <summary>
+        /// Opens the given VIRTUAL asset - one created at run time, with no file - in the editor window
+        /// for its type, the same window a file of that type opens in.
+        /// </summary>
+        /// <param name="asset">The live virtual asset.</param>
+        /// <param name="displayPath">A path to show in the window title; it does not have to exist.</param>
+        /// <param name="disableAutoShow">True if disable automatic window showing.</param>
+        /// <returns>Opened window, or null if there is no editor window for that asset type.</returns>
+        public EditorWindow Open(Asset asset, string displayPath, bool disableAutoShow = false)
+        {
+            if (asset == null)
+                throw new ArgumentNullException(nameof(asset));
+
+            // A file wins if there is one: an asset with a file is not a virtual asset.
+            var existing = Editor.ContentDatabase.FindAsset(asset.ID);
+            if (existing != null)
+                return Open(existing, disableAutoShow);
+
+            // One item per asset, so pressing Open twice focuses the window rather than opening a second.
+            if (!_virtualItems.TryGetValue(asset.ID, out var item) || item.Asset != asset)
+            {
+                item = new VirtualAssetItem(asset, displayPath ?? asset.ID.ToString());
+                _virtualItems[asset.ID] = item;
+            }
+            return Open(item, disableAutoShow);
+        }
+
+        /// <summary>
+        /// Drops the item kept for a virtual asset, so the next Open builds a new one. Call it when the
+        /// asset itself is going away.
+        /// </summary>
+        /// <param name="assetId">The asset id.</param>
+        public void ForgetVirtualAsset(Guid assetId)
+        {
+            _virtualItems.Remove(assetId);
+        }
+
         /// <summary>
         /// Opens the specified item in dedicated editor window.
         /// </summary>

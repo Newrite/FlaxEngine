@@ -209,6 +209,7 @@ namespace FlaxEditor.GUI.Timeline
         private BackgroundArea _backgroundArea;
         private TimelineEdge _leftEdge;
         private TimelineEdge _rightEdge;
+        private bool _canEdit = true;
         private Button _addTrackButton;
         private ComboBox _fpsComboBox;
         private Button _viewButton;
@@ -551,6 +552,24 @@ namespace FlaxEditor.GUI.Timeline
                     return;
                 _canStop = value;
                 UpdatePlaybackButtons();
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether the user can change anything in this timeline. When
+        /// false the timeline is a viewer: tracks cannot be added and nothing marks it as modified, so
+        /// nothing is ever written back to whatever it was loaded from. Playback and seeking still work.
+        /// </summary>
+        public bool CanEdit
+        {
+            get => _canEdit;
+            set
+            {
+                if (_canEdit == value)
+                    return;
+                _canEdit = value;
+                if (_addTrackButton != null)
+                    _addTrackButton.Enabled = value;
             }
         }
 
@@ -1763,6 +1782,9 @@ namespace FlaxEditor.GUI.Timeline
         /// </summary>
         public void MarkAsEdited()
         {
+            // A timeline that cannot be edited never becomes modified, so nothing downstream saves it.
+            if (!_canEdit)
+                return;
             _isModified = true;
 
             Modified?.Invoke();
@@ -2177,6 +2199,8 @@ namespace FlaxEditor.GUI.Timeline
         /// <param name="undoContext">The undo context object.</param>
         public virtual void ShowEditPopup(object obj, Float2 location, object undoContext = null)
         {
+            if (!_canEdit)
+                return;
             var popup = new PropertiesEditPopup(this, obj, undoContext);
             popup.Show(this, location);
         }

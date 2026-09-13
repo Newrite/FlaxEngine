@@ -83,6 +83,10 @@ namespace FlaxEditor.Windows.Assets
         {
             private AnimationWindow Window;
             private Animation Asset;
+
+            /// <summary>True once OnLoad has linked this proxy to its window; before that it ignores
+            /// anything set on it, so a value has to wait for the asset to load.</summary>
+            public bool IsLinked => Window != null;
             private ModelImportSettings ImportSettings = new ModelImportSettings();
             private bool EnablePreviewModelCache = true;
 
@@ -177,7 +181,8 @@ namespace FlaxEditor.Windows.Assets
                 EnablePreviewModelCache = true;
 
                 // Try to restore target asset import options (useful for fast reimport)
-                Editor.TryRestoreImportOptions(ref ImportSettings.Settings, window.Item.Path);
+                if (!(window.Item is VirtualAssetItem))
+                    Editor.TryRestoreImportOptions(ref ImportSettings.Settings, window.Item.Path);
             }
 
             public void OnClean()
@@ -262,6 +267,70 @@ namespace FlaxEditor.Windows.Assets
         public AnimationTimeline Timeline => _timeline;
 
         /// <summary>
+        /// True when this window shows an asset that has no file - a virtual one. Such a window is a
+        /// viewer: it cannot save, and its timeline cannot be edited.
+        /// </summary>
+        public bool IsVirtualAsset => _item is VirtualAssetItem;
+
+        /// <summary>
+        /// Gets or sets the skinned model the animation is previewed on. The same thing the Preview
+        /// Model field in the properties panel sets, reachable from code so that a tool can open a
+        /// window already showing the right character.
+        /// </summary>
+        public SkinnedModel PreviewModel
+        {
+            get => _properties?.PreviewModel;
+            set
+            {
+                // Before the asset is loaded the properties proxy is not linked to this window yet and
+                // ignores what it is given, so the value waits for OnAssetLoaded like the cached one.
+                if (_properties != null && _properties.IsLinked)
+                    _properties.PreviewModel = value;
+                else
+                    _initialPreviewModel = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the skinned model the animation was authored against, used as the retarget
+        /// source when it differs from <see cref="PreviewModel"/>.
+        /// </summary>
+        public SkinnedModel PreviewBaseModel
+        {
+            get => _preview?.BaseModel;
+            set
+            {
+                if (_properties != null && _properties.IsLinked && _preview != null)
+                    _properties.BaseModel = value;
+                else
+                    _initialBaseModel = value;
+            }
+        }
+
+        /// <summary>
+        /// Writes this animation to a file, which can then be opened as an ordinary asset. Meant for a
+        /// virtual asset, which has nothing on disk: <see cref="Asset.Save"/> takes a path and accepts
+        /// a virtual asset when it is given one.
+        /// </summary>
+        /// <param name="path">The destination path.</param>
+        /// <returns>True if failed, otherwise false.</returns>
+        public bool Export(string path)
+        {
+            if (_asset == null || string.IsNullOrEmpty(path))
+                return true;
+            if (_asset.WaitForLoaded())
+                return true;
+            if (_asset.Save(path))
+                return true;
+            // Let the content database see the new file. Find() returns null for a folder it has not
+            // indexed yet, and RefreshFolder(null) throws, so the lookup is checked.
+            var folder = Editor.ContentDatabase.Find(System.IO.Path.GetDirectoryName(path));
+            if (folder != null)
+                Editor.ContentDatabase.RefreshFolder(folder, true);
+            return false;
+        }
+
+        /// <summary>
         /// Gets the undo history context for this window.
         /// </summary>
         public Undo Undo => _undo;
@@ -306,6 +375,14 @@ namespace FlaxEditor.Windows.Assets
 
             // Toolstrip
             _saveButton = _toolstrip.AddButton(Editor.Icons.Save64, Save).LinkTooltip("Save", ref inputOptions.Save);
+            if (item is VirtualAssetItem)
+            {
+                // Nothing to save into: the asset has no file. Offer to make one instead.
+                _saveButton.Enabled = false;
+                _saveButton.TooltipText = "This animation is virtual and has no file to save to";
+                _toolstrip.AddButton(Editor.Icons.AddFile64, OnExportClicked).LinkTooltip("Export to a file in the project");
+                _timeline.CanEdit = false;
+            }
             _toolstrip.AddSeparator();
             _undoButton = _toolstrip.AddButton(Editor.Icons.Undo64, _undo.PerformUndo).LinkTooltip("Undo", ref inputOptions.Undo);
             _redoButton = _toolstrip.AddButton(Editor.Icons.Redo64, _undo.PerformRedo).LinkTooltip("Redo", ref inputOptions.Redo);
@@ -315,6 +392,27 @@ namespace FlaxEditor.Windows.Assets
             // Setup input actions
             InputActions.Add(options => options.Undo, _undo.PerformUndo);
             InputActions.Add(options => options.Redo, _undo.PerformRedo);
+        }
+
+        private void OnExportClicked()
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(_item.ShortName);
+            if (string.IsNullOrEmpty(name))
+                name = "Animation";
+            var suggested = System.IO.Path.Combine(Globals.ProjectContentFolder, name + ".flax");
+            if (FileSystem.ShowSaveFileDialog(Editor.Windows.MainWindow, Globals.ProjectContentFolder,
+                                              "Flax Asset (*.flax)\0*.flax\0", false, "Export animation",
+                                              out var files) || files == null || files.Length == 0)
+            {
+                // The dialog was cancelled, or the platform has none: fall back to the suggested path.
+                if (files == null || files.Length == 0)
+                    return;
+            }
+            var path = files.Length > 0 ? files[0] : suggested;
+            if (Export(path))
+                Editor.LogError("Failed to export the animation to " + path);
+            else
+                Editor.Log("Exported the animation to " + path);
         }
 
         private void OnUndoRedo(IUndoAction action)
@@ -378,6 +476,12 @@ namespace FlaxEditor.Windows.Assets
         /// <inheritdoc />
         public override void Save()
         {
+            if (IsVirtualAsset)
+            {
+                // SaveToOriginal copies the cloned file over the original, and there is neither.
+                Editor.LogWarning("Cannot save a virtual animation: it has no file. Use Export instead.");
+                return;
+            }
             if (!IsEdited)
                 return;
 
@@ -393,7 +497,7 @@ namespace FlaxEditor.Windows.Assets
         /// <inheritdoc />
         protected override void UpdateToolstrip()
         {
-            _saveButton.Enabled = IsEdited;
+            _saveButton.Enabled = IsEdited && !IsVirtualAsset;
             _undoButton.Enabled = _undo.CanUndo;
             _redoButton.Enabled = _undo.CanRedo;
 
