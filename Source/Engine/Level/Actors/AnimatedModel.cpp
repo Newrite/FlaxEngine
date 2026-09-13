@@ -624,11 +624,12 @@ void AnimatedModel::StopSlotAnimation(const StringView& slotName, Animation* ani
 {
     for (auto& slot : GraphInstance.Slots)
     {
-        if ((slot.Animation == anim || anim == nullptr) && slot.Name == slotName)
+        // A slot entry whose animation has ended keeps its name, so skip those: matching one of them
+        // by name alone used to stop the search and leave the animation that is actually playing.
+        if (slot.Animation != nullptr && (slot.Animation == anim || anim == nullptr) && slot.Name == slotName)
         {
             //slot.Animation = nullptr; // TODO: make an immediate version of this method and set the animation to nullptr.
-            if (slot.Animation != nullptr)
-                slot.Reset = true;
+            slot.Reset = true;
             break;
         }
     }
@@ -666,7 +667,9 @@ bool AnimatedModel::IsPlayingSlotAnimation(const StringView& slotName, Animation
 {
     for (auto& slot : GraphInstance.Slots)
     {
-        if ((slot.Animation == anim || anim == nullptr) && slot.Name == slotName && !slot.Pause)
+        // An entry is kept, with its name, after its animation ends; "anything in this slot" has to
+        // mean an animation that is actually there, as it already does in the overload without a name.
+        if (slot.Animation != nullptr && (slot.Animation == anim || anim == nullptr) && slot.Name == slotName && !slot.Pause)
             return true;
     }
     return false;
